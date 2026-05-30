@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, X } from "lucide-react";
 
 import { sidebarMenus } from "@/constants/menus";
 import { UserRole } from "@/types/auth";
 
 type SidebarProps = {
   role?: UserRole;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
-export function Sidebar({ role }: SidebarProps) {
+export function Sidebar({ role, open = false, onOpenChange }: SidebarProps) {
   const pathname = usePathname();
 
   const menus = sidebarMenus.filter((menu) =>
@@ -19,19 +21,44 @@ export function Sidebar({ role }: SidebarProps) {
   );
 
   return (
-    <aside className="hidden md:flex md:w-64 md:flex-col bg-emerald-900 text-white min-h-screen">
-      <div className="h-16 flex items-center gap-3 px-5 border-b border-emerald-800">
-        <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+    <>
+      {open && (
+        <button
+          type="button"
+          aria-label="Tutup menu"
+          className="fixed inset-0 z-40 bg-slate-950/45 md:hidden"
+          onClick={() => onOpenChange?.(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-slate-950 text-white transition-transform md:static md:z-auto md:w-[280px] md:translate-x-0 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+      <div className="h-[88px] flex items-center gap-3 px-6">
+        <div className="w-12 h-12 rounded-2xl bg-emerald-500 flex items-center justify-center">
           <GraduationCap size={24} />
         </div>
 
         <div>
-          <h1 className="font-bold leading-tight">MANDA Gate</h1>
-          <p className="text-xs text-emerald-100">MAN 2 Gresik</p>
+          <h1 className="text-xl font-bold leading-tight">MANDA Gate</h1>
+          <p className="text-xs font-medium text-slate-400">
+            Portal Akademik
+          </p>
         </div>
+
+        <button
+          type="button"
+          aria-label="Tutup menu"
+          className="ml-auto rounded-lg p-2 text-slate-100 hover:bg-slate-800 md:hidden"
+          onClick={() => onOpenChange?.(false)}
+        >
+          <X size={18} />
+        </button>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 space-y-1 px-5 py-2">
         {menus.map((menu) => {
           const Icon = menu.icon;
           const isActive = pathname === menu.href;
@@ -40,10 +67,11 @@ export function Sidebar({ role }: SidebarProps) {
             <Link
               key={menu.href}
               href={menu.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition ${
+              onClick={() => onOpenChange?.(false)}
+              className={`flex items-center gap-3 rounded-[14px] px-3 py-2.5 text-sm transition ${
                 isActive
-                  ? "bg-white text-emerald-900 font-semibold"
-                  : "text-emerald-50 hover:bg-emerald-800"
+                  ? "bg-emerald-500 text-white font-bold"
+                  : "text-slate-300 hover:bg-white/10 hover:text-white"
               }`}
             >
               <Icon size={18} />
@@ -53,11 +81,11 @@ export function Sidebar({ role }: SidebarProps) {
         })}
       </nav>
 
-      <div className="p-4 border-t border-emerald-800">
-        <p className="text-xs text-emerald-100">
-          Portal Akademik Terpadu
-        </p>
+      <div className="m-5 rounded-[18px] bg-white/10 px-5 py-4">
+        <p className="text-xs font-medium text-slate-400">Role aktif</p>
+        <p className="mt-2 text-sm font-bold text-white">Admin / TU</p>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

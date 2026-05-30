@@ -1,5 +1,6 @@
 import { Student } from "@/types/student";
 
+
 export const students: Student[] = [
   {
     id: "1",
@@ -137,4 +138,5 @@ export const students: Student[] = [
     status: "Aktif",
     photo: "",
   },
+  
 ];

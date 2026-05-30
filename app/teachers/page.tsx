@@ -5,8 +5,8 @@ import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { students as initialStudents } from "@/data/students";
-import { Student } from "@/types/student";
+import { teachers as initialTeachers } from "@/data/teachers";
+import { Teacher } from "@/types/teacher";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,9 +20,9 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -33,81 +33,70 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-type StudentForm = {
-  nis: string;
-  nisn: string;
+type TeacherForm = {
+  nip: string;
   fullName: string;
   gender: "Laki-laki" | "Perempuan";
-  birthPlace: string;
-  birthDate: string;
-  address: string;
-  phone: string;
   email: string;
-  className: string;
-  major: string;
-  admissionYear: string;
-  status: "Aktif" | "Tidak Aktif" | "Lulus";
+  phone: string;
+  address: string;
+  subject: string;
+  position: string;
+  status: "Aktif" | "Tidak Aktif";
 };
 
-const defaultForm: StudentForm = {
-  nis: "",
-  nisn: "",
+const defaultForm: TeacherForm = {
+  nip: "",
   fullName: "",
   gender: "Laki-laki",
-  birthPlace: "",
-  birthDate: "",
-  address: "",
-  phone: "",
   email: "",
-  className: "X IPA 1",
-  major: "IPA",
-  admissionYear: "2026",
+  phone: "",
+  address: "",
+  subject: "Matematika",
+  position: "Guru Mata Pelajaran",
   status: "Aktif",
 };
 
-function studentToForm(student: Student): StudentForm {
+function teacherToForm(teacher: Teacher): TeacherForm {
   return {
-    nis: student.nis,
-    nisn: student.nisn,
-    fullName: student.fullName,
-    gender: student.gender,
-    birthPlace: student.birthPlace || "",
-    birthDate: student.birthDate || "",
-    address: student.address || "",
-    phone: student.phone || "",
-    email: student.email || "",
-    className: student.className,
-    major: student.major,
-    admissionYear: String(student.admissionYear),
-    status: student.status,
+    nip: teacher.nip,
+    fullName: teacher.fullName,
+    gender: teacher.gender,
+    email: teacher.email,
+    phone: teacher.phone || "",
+    address: teacher.address || "",
+    subject: teacher.subject,
+    position: teacher.position,
+    status: teacher.status,
   };
 }
 
-export default function StudentsPage() {
-  const [students, setStudents] = useState<Student[]>(initialStudents);
+export default function TeachersPage() {
+  const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers);
   const [search, setSearch] = useState("");
 
   const [addOpen, setAddOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [form, setForm] = useState<StudentForm>(defaultForm);
+  const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
+  const [form, setForm] = useState<TeacherForm>(defaultForm);
 
-  const filteredStudents = useMemo(() => {
-    return students.filter((student) => {
+  const filteredTeachers = useMemo(() => {
+    return teachers.filter((teacher) => {
       const keyword = search.toLowerCase();
 
       return (
-        student.fullName.toLowerCase().includes(keyword) ||
-        student.nis.toLowerCase().includes(keyword) ||
-        student.nisn.toLowerCase().includes(keyword) ||
-        student.className.toLowerCase().includes(keyword)
+        teacher.fullName.toLowerCase().includes(keyword) ||
+        teacher.nip.toLowerCase().includes(keyword) ||
+        teacher.email.toLowerCase().includes(keyword) ||
+        teacher.subject.toLowerCase().includes(keyword) ||
+        teacher.position.toLowerCase().includes(keyword)
       );
     });
-  }, [search, students]);
+  }, [search, teachers]);
 
-  const handleChange = (field: keyof StudentForm, value: string) => {
+  const handleChange = (field: keyof TeacherForm, value: string) => {
     setForm((previous) => ({
       ...previous,
       [field]: value,
@@ -115,8 +104,8 @@ export default function StudentsPage() {
   };
 
   const validateForm = () => {
-    if (!form.nis || !form.nisn || !form.fullName || !form.email) {
-      alert("NIS, NISN, nama lengkap, dan email wajib diisi.");
+    if (!form.nip || !form.fullName || !form.email || !form.subject) {
+      alert("NIP, nama lengkap, email, dan mata pelajaran wajib diisi.");
       return false;
     }
 
@@ -128,25 +117,21 @@ export default function StudentsPage() {
 
     if (!validateForm()) return;
 
-    const newStudent: Student = {
+    const newTeacher: Teacher = {
       id: Date.now().toString(),
-      nis: form.nis,
-      nisn: form.nisn,
+      nip: form.nip,
       fullName: form.fullName,
       gender: form.gender,
-      birthPlace: form.birthPlace,
-      birthDate: form.birthDate,
-      address: form.address,
-      phone: form.phone,
       email: form.email,
-      className: form.className,
-      major: form.major,
-      admissionYear: Number(form.admissionYear),
+      phone: form.phone,
+      address: form.address,
+      subject: form.subject,
+      position: form.position,
       status: form.status,
       photo: "",
     };
 
-    setStudents((previous) => [newStudent, ...previous]);
+    setTeachers((previous) => [newTeacher, ...previous]);
     setForm(defaultForm);
     setAddOpen(false);
   };
@@ -154,54 +139,50 @@ export default function StudentsPage() {
   const handleEditSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!selectedStudent) return;
+    if (!selectedTeacher) return;
     if (!validateForm()) return;
 
-    const updatedStudent: Student = {
-      ...selectedStudent,
-      nis: form.nis,
-      nisn: form.nisn,
+    const updatedTeacher: Teacher = {
+      ...selectedTeacher,
+      nip: form.nip,
       fullName: form.fullName,
       gender: form.gender,
-      birthPlace: form.birthPlace,
-      birthDate: form.birthDate,
-      address: form.address,
-      phone: form.phone,
       email: form.email,
-      className: form.className,
-      major: form.major,
-      admissionYear: Number(form.admissionYear),
+      phone: form.phone,
+      address: form.address,
+      subject: form.subject,
+      position: form.position,
       status: form.status,
     };
 
-    setStudents((previous) =>
-      previous.map((student) =>
-        student.id === selectedStudent.id ? updatedStudent : student
+    setTeachers((previous) =>
+      previous.map((teacher) =>
+        teacher.id === selectedTeacher.id ? updatedTeacher : teacher
       )
     );
 
-    setSelectedStudent(null);
+    setSelectedTeacher(null);
     setForm(defaultForm);
     setEditOpen(false);
   };
 
-  const handleDetail = (student: Student) => {
-    setSelectedStudent(student);
+  const handleDetail = (teacher: Teacher) => {
+    setSelectedTeacher(teacher);
     setDetailOpen(true);
   };
 
-  const handleEdit = (student: Student) => {
-    setSelectedStudent(student);
-    setForm(studentToForm(student));
+  const handleEdit = (teacher: Teacher) => {
+    setSelectedTeacher(teacher);
+    setForm(teacherToForm(teacher));
     setEditOpen(true);
   };
 
   const handleDelete = (id: string) => {
-    const confirmed = confirm("Yakin ingin menghapus data siswa ini?");
+    const confirmed = confirm("Yakin ingin menghapus data guru ini?");
 
     if (!confirmed) return;
 
-    setStudents((previous) => previous.filter((student) => student.id !== id));
+    setTeachers((previous) => previous.filter((teacher) => teacher.id !== id));
   };
 
   return (
@@ -209,9 +190,9 @@ export default function StudentsPage() {
       <section className="space-y-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Data Siswa</h1>
+            <h1 className="text-2xl font-bold text-slate-900">Data Guru</h1>
             <p className="text-slate-500">
-              Kelola data siswa MAN 2 Gresik.
+              Kelola data guru dan tenaga pendidik MAN 2 Gresik.
             </p>
           </div>
 
@@ -223,14 +204,14 @@ export default function StudentsPage() {
             }}
           >
             <Plus size={16} className="mr-2" />
-            Tambah Siswa
+            Tambah Guru
           </Button>
         </div>
 
         <Card>
           <CardHeader className="space-y-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <CardTitle>Daftar Siswa</CardTitle>
+              <CardTitle>Daftar Guru</CardTitle>
 
               <div className="relative w-full md:w-80">
                 <Search
@@ -240,7 +221,7 @@ export default function StudentsPage() {
 
                 <Input
                   className="pl-9"
-                  placeholder="Cari nama, NIS, NISN, kelas..."
+                  placeholder="Cari nama, NIP, email, mapel..."
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
@@ -254,38 +235,38 @@ export default function StudentsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>No</TableHead>
-                    <TableHead>NIS</TableHead>
-                    <TableHead>NISN</TableHead>
+                    <TableHead>NIP</TableHead>
                     <TableHead>Nama Lengkap</TableHead>
                     <TableHead>Gender</TableHead>
-                    <TableHead>Kelas</TableHead>
-                    <TableHead>Jurusan</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Mapel</TableHead>
+                    <TableHead>Jabatan</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody>
-                  {filteredStudents.map((student, index) => (
-                    <TableRow key={student.id}>
+                  {filteredTeachers.map((teacher, index) => (
+                    <TableRow key={teacher.id}>
                       <TableCell>{index + 1}</TableCell>
                       <TableCell className="font-medium">
-                        {student.nis}
+                        {teacher.nip}
                       </TableCell>
-                      <TableCell>{student.nisn}</TableCell>
-                      <TableCell>{student.fullName}</TableCell>
-                      <TableCell>{student.gender}</TableCell>
-                      <TableCell>{student.className}</TableCell>
-                      <TableCell>{student.major}</TableCell>
+                      <TableCell>{teacher.fullName}</TableCell>
+                      <TableCell>{teacher.gender}</TableCell>
+                      <TableCell>{teacher.email}</TableCell>
+                      <TableCell>{teacher.subject}</TableCell>
+                      <TableCell>{teacher.position}</TableCell>
                       <TableCell>
-                        <StatusBadge status={student.status} />
+                        <StatusBadge status={teacher.status} />
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
                           <Button
                             size="icon"
                             variant="outline"
-                            onClick={() => handleDetail(student)}
+                            onClick={() => handleDetail(teacher)}
                           >
                             <Eye size={15} />
                           </Button>
@@ -293,7 +274,7 @@ export default function StudentsPage() {
                           <Button
                             size="icon"
                             variant="outline"
-                            onClick={() => handleEdit(student)}
+                            onClick={() => handleEdit(teacher)}
                           >
                             <Pencil size={15} />
                           </Button>
@@ -302,7 +283,7 @@ export default function StudentsPage() {
                             size="icon"
                             variant="outline"
                             className="text-red-600 hover:text-red-700"
-                            onClick={() => handleDelete(student.id)}
+                            onClick={() => handleDelete(teacher.id)}
                           >
                             <Trash2 size={15} />
                           </Button>
@@ -311,13 +292,13 @@ export default function StudentsPage() {
                     </TableRow>
                   ))}
 
-                  {filteredStudents.length === 0 && (
+                  {filteredTeachers.length === 0 && (
                     <TableRow>
                       <TableCell
                         colSpan={9}
                         className="h-32 text-center text-slate-500"
                       >
-                        Data siswa tidak ditemukan.
+                        Data guru tidak ditemukan.
                       </TableCell>
                     </TableRow>
                   )}
@@ -327,20 +308,20 @@ export default function StudentsPage() {
           </CardContent>
         </Card>
 
-        <StudentFormDialog
-          title="Tambah Data Siswa"
-          description="Masukkan data siswa baru ke sistem MANDA Gate."
+        <TeacherFormDialog
+          title="Tambah Data Guru"
+          description="Masukkan data guru baru ke sistem MANDA Gate."
           open={addOpen}
           onOpenChange={setAddOpen}
           form={form}
           onChange={handleChange}
           onSubmit={handleAddSubmit}
-          submitLabel="Simpan Siswa"
+          submitLabel="Simpan Guru"
         />
 
-        <StudentFormDialog
-          title="Edit Data Siswa"
-          description="Ubah data siswa yang sudah terdaftar."
+        <TeacherFormDialog
+          title="Edit Data Guru"
+          description="Ubah data guru yang sudah terdaftar."
           open={editOpen}
           onOpenChange={setEditOpen}
           form={form}
@@ -349,28 +330,28 @@ export default function StudentsPage() {
           submitLabel="Simpan Perubahan"
         />
 
-        <StudentDetailDialog
+        <TeacherDetailDialog
           open={detailOpen}
           onOpenChange={setDetailOpen}
-          student={selectedStudent}
+          teacher={selectedTeacher}
         />
       </section>
     </DashboardLayout>
   );
 }
 
-type StudentFormDialogProps = {
+type TeacherFormDialogProps = {
   title: string;
   description: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  form: StudentForm;
-  onChange: (field: keyof StudentForm, value: string) => void;
+  form: TeacherForm;
+  onChange: (field: keyof TeacherForm, value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   submitLabel: string;
 };
 
-function StudentFormDialog({
+function TeacherFormDialog({
   title,
   description,
   open,
@@ -379,7 +360,7 @@ function StudentFormDialog({
   onChange,
   onSubmit,
   submitLabel,
-}: StudentFormDialogProps) {
+}: TeacherFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!w-[min(920px,calc(100vw-32px))] !max-w-none max-h-[90vh] overflow-y-auto rounded-3xl p-6">
@@ -391,31 +372,20 @@ function StudentFormDialog({
         <form onSubmit={onSubmit} className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>NIS</Label>
+              <Label>NIP</Label>
               <Input
-                placeholder="Contoh: 2026009"
-                value={form.nis}
-                onChange={(event) => onChange("nis", event.target.value)}
+                placeholder="Contoh: 198001012010011001"
+                value={form.nip}
+                onChange={(event) => onChange("nip", event.target.value)}
               />
             </div>
 
             <div className="space-y-2">
-              <Label>NISN</Label>
-              <Input
-                placeholder="Contoh: 0061234575"
-                value={form.nisn}
-                onChange={(event) => onChange("nisn", event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
               <Label>Nama Lengkap</Label>
               <Input
                 placeholder="Masukkan nama lengkap"
                 value={form.fullName}
-                onChange={(event) =>
-                  onChange("fullName", event.target.value)
-                }
+                onChange={(event) => onChange("fullName", event.target.value)}
               />
             </div>
 
@@ -432,98 +402,61 @@ function StudentFormDialog({
             </div>
 
             <div className="space-y-2">
-              <Label>Tanggal Lahir</Label>
+              <Label>Email</Label>
               <Input
-                type="date"
-                value={form.birthDate}
-                onChange={(event) =>
-                  onChange("birthDate", event.target.value)
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Tempat Lahir</Label>
-              <Input
-                placeholder="Contoh: Gresik"
-                value={form.birthPlace}
-                onChange={(event) =>
-                  onChange("birthPlace", event.target.value)
-                }
+                type="email"
+                placeholder="guru@manda.sch.id"
+                value={form.email}
+                onChange={(event) => onChange("email", event.target.value)}
               />
             </div>
 
             <div className="space-y-2">
               <Label>No. HP</Label>
               <Input
-                placeholder="Contoh: 081234567890"
+                placeholder="081234567890"
                 value={form.phone}
                 onChange={(event) => onChange("phone", event.target.value)}
               />
             </div>
 
-            <div className="space-y-2 md:col-span-2">
-              <Label>Email</Label>
-              <Input
-                type="email"
-                placeholder="Contoh: siswa@student.manda.sch.id"
-                value={form.email}
-                onChange={(event) => onChange("email", event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label>Alamat</Label>
-              <Input
-                placeholder="Masukkan alamat siswa"
-                value={form.address}
-                onChange={(event) => onChange("address", event.target.value)}
-              />
-            </div>
-
             <div className="space-y-2">
-              <Label>Kelas</Label>
+              <Label>Mata Pelajaran</Label>
               <select
                 className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={form.className}
-                onChange={(event) =>
-                  onChange("className", event.target.value)
-                }
+                value={form.subject}
+                onChange={(event) => onChange("subject", event.target.value)}
               >
-                <option value="X IPA 1">X IPA 1</option>
-                <option value="X IPS 1">X IPS 1</option>
-                <option value="XI IPA 1">XI IPA 1</option>
-                <option value="XI IPS 1">XI IPS 1</option>
-                <option value="XII IPA 1">XII IPA 1</option>
-                <option value="XII IPS 1">XII IPS 1</option>
-                <option value="X Agama">X Agama</option>
-                <option value="XI Agama">XI Agama</option>
-                <option value="XII Agama">XII Agama</option>
+                <option value="Al-Qur'an Hadis">Al-Qur&apos;an Hadis</option>
+                <option value="Akidah Akhlak">Akidah Akhlak</option>
+                <option value="Fikih">Fikih</option>
+                <option value="Bahasa Arab">Bahasa Arab</option>
+                <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                <option value="Bahasa Inggris">Bahasa Inggris</option>
+                <option value="Matematika">Matematika</option>
+                <option value="Biologi">Biologi</option>
+                <option value="Fisika">Fisika</option>
+                <option value="Kimia">Kimia</option>
+                <option value="Ekonomi">Ekonomi</option>
+                <option value="Geografi">Geografi</option>
+                <option value="Sosiologi">Sosiologi</option>
+                <option value="Informatika">Informatika</option>
               </select>
             </div>
 
             <div className="space-y-2">
-              <Label>Jurusan</Label>
+              <Label>Jabatan</Label>
               <select
                 className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={form.major}
-                onChange={(event) => onChange("major", event.target.value)}
+                value={form.position}
+                onChange={(event) => onChange("position", event.target.value)}
               >
-                <option value="IPA">IPA</option>
-                <option value="IPS">IPS</option>
-                <option value="Agama">Agama</option>
+                <option value="Guru Mata Pelajaran">Guru Mata Pelajaran</option>
+                <option value="Wali Kelas">Wali Kelas</option>
+                <option value="Guru BK">Guru BK</option>
+                <option value="Kepala Madrasah">Kepala Madrasah</option>
+                <option value="Admin TU">Admin TU</option>
               </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Tahun Masuk</Label>
-              <Input
-                type="number"
-                value={form.admissionYear}
-                onChange={(event) =>
-                  onChange("admissionYear", event.target.value)
-                }
-              />
             </div>
 
             <div className="space-y-2">
@@ -535,8 +468,16 @@ function StudentFormDialog({
               >
                 <option value="Aktif">Aktif</option>
                 <option value="Tidak Aktif">Tidak Aktif</option>
-                <option value="Lulus">Lulus</option>
               </select>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label>Alamat</Label>
+              <Input
+                placeholder="Masukkan alamat guru"
+                value={form.address}
+                onChange={(event) => onChange("address", event.target.value)}
+              />
             </div>
           </div>
 
@@ -562,71 +503,55 @@ function StudentFormDialog({
   );
 }
 
-type StudentDetailDialogProps = {
+type TeacherDetailDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  student: Student | null;
+  teacher: Teacher | null;
 };
 
-function StudentDetailDialog({
+function TeacherDetailDialog({
   open,
   onOpenChange,
-  student,
-}: StudentDetailDialogProps) {
-  if (!student) return null;
+  teacher,
+}: TeacherDetailDialogProps) {
+  if (!teacher) return null;
 
   const detailItems = [
     {
-      label: "NIS",
-      value: student.nis,
-    },
-    {
-      label: "NISN",
-      value: student.nisn,
+      label: "NIP",
+      value: teacher.nip,
     },
     {
       label: "Nama Lengkap",
-      value: student.fullName,
+      value: teacher.fullName,
     },
     {
       label: "Jenis Kelamin",
-      value: student.gender,
-    },
-    {
-      label: "Tempat Lahir",
-      value: student.birthPlace || "-",
-    },
-    {
-      label: "Tanggal Lahir",
-      value: student.birthDate || "-",
-    },
-    {
-      label: "Alamat",
-      value: student.address || "-",
-    },
-    {
-      label: "No. HP",
-      value: student.phone || "-",
+      value: teacher.gender,
     },
     {
       label: "Email",
-      value: student.email || "-",
+      value: teacher.email,
     },
     {
-      label: "Kelas",
-      value: student.className,
+      label: "No. HP",
+      value: teacher.phone || "-",
     },
     {
-      label: "Jurusan",
-      value: student.major,
+      label: "Alamat",
+      value: teacher.address || "-",
     },
     {
-      label: "Tahun Masuk",
-      value: student.admissionYear,
+      label: "Mata Pelajaran",
+      value: teacher.subject,
+    },
+    {
+      label: "Jabatan",
+      value: teacher.position,
     },
     {
       label: "Status",
-      value: student.status,
+      value: teacher.status,
     },
   ];
 
@@ -634,19 +559,19 @@ function StudentDetailDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!w-[min(760px,calc(100vw-32px))] !max-w-none max-h-[90vh] overflow-y-auto rounded-3xl p-6">
         <DialogHeader>
-          <DialogTitle>Detail Siswa</DialogTitle>
+          <DialogTitle>Detail Guru</DialogTitle>
           <DialogDescription>
-            Informasi lengkap data siswa MAN 2 Gresik.
+            Informasi lengkap data guru MAN 2 Gresik.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="rounded-xl border bg-slate-50 p-4">
             <h3 className="font-bold text-lg text-slate-900">
-              {student.fullName}
+              {teacher.fullName}
             </h3>
             <p className="text-sm text-slate-500">
-              {student.className} • {student.major}
+              {teacher.subject} • {teacher.position}
             </p>
           </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/layout/sidebar";
@@ -14,6 +14,7 @@ type DashboardLayoutProps = {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const { user, loadUser } = useAuthStore();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -28,13 +29,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-slate-100 flex">
-      <Sidebar role={user?.role} />
+    <div className="min-h-screen bg-slate-50 flex">
+      <Sidebar
+        role={user?.role}
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+      />
 
       <div className="flex-1 min-w-0">
-        <Topbar />
+        <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
-        <main className="p-4 md:p-6">{children}</main>
+        <main className="p-4 md:p-8">{children}</main>
       </div>
     </div>
   );

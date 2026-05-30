@@ -18,7 +18,7 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
-  const login = useAuthStore((state: any) => state.login);
+  const login = useAuthStore((state) => state.login);
 
   const [email, setEmail] = useState("admin@manda.sch.id");
   const [password, setPassword] = useState("password123");
@@ -36,7 +36,12 @@ export default function LoginPage() {
       return;
     }
 
-    const { password: _, ...userWithoutPassword } = foundUser;
+    const userWithoutPassword = {
+      id: foundUser.id,
+      name: foundUser.name,
+      email: foundUser.email,
+      role: foundUser.role,
+    };
 
     login(userWithoutPassword, "mock-token-manda-gate");
 
