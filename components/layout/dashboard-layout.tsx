@@ -39,7 +39,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="flex-1 min-w-0">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
-        <main className="p-4 md:p-8">{children}</main>
+        <main className="min-h-screen flex-1 bg-slate-50 md:ml-[280px]">
+  <div className="px-4 py-5 sm:px-6 lg:px-8">
+    {children}
+  </div>
+</main>
       </div>
     </div>
   );

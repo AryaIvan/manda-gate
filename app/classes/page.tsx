@@ -1,7 +1,18 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Eye, Filter, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Eye,
+  Filter,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  UserMinus,
+  UserPlus,
+  Users,
+} from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { classes as initialClasses } from "@/data/classes";
@@ -52,6 +63,17 @@ function classToForm(schoolClass: SchoolClass): ClassForm {
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<SchoolClass[]>(initialClasses);
+  const [studentClassMap, setStudentClassMap] = useState<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        students.map((student) => [
+          student.id,
+          student.id === "6" || student.id === "7"
+            ? "X IPA 1"
+            : student.className,
+        ]),
+      ),
+  );
   const [search, setSearch] = useState("");
   const [gradeFilter, setGradeFilter] = useState("Semua");
   const [majorFilter, setMajorFilter] = useState("Semua");
@@ -171,6 +193,23 @@ export default function ClassesPage() {
     );
   };
 
+  const getRegisteredStudents = (className: string) =>
+    students.filter((student) => studentClassMap[student.id] === className);
+
+  const handleAssignStudent = (studentId: string, className: string) => {
+    setStudentClassMap((previous) => ({
+      ...previous,
+      [studentId]: className,
+    }));
+  };
+
+  const handleRemoveStudent = (studentId: string) => {
+    setStudentClassMap((previous) => ({
+      ...previous,
+      [studentId]: "",
+    }));
+  };
+
   return (
     <DashboardLayout>
       <section className="space-y-6">
@@ -180,11 +219,11 @@ export default function ClassesPage() {
               Dashboard / Master Data / Kelas
             </p>
             <h1 className="mt-1 text-2xl font-bold text-slate-900">
-              Data Kelas
+              Manajemen Kelas
             </h1>
             <p className="mt-1 text-slate-500">
-              Kelola kelas, tingkat, jurusan, wali kelas, tahun ajaran, dan
-              jumlah siswa.
+              Atur wali kelas, tahun ajaran, status kelas, dan penempatan siswa
+              di setiap kelas.
             </p>
           </div>
 
@@ -262,6 +301,7 @@ export default function ClassesPage() {
             <ClassCard
               key={schoolClass.id}
               schoolClass={schoolClass}
+              studentCount={getRegisteredStudents(schoolClass.name).length}
               onDetail={() => handleDetail(schoolClass)}
               onEdit={() => handleEdit(schoolClass)}
               onDelete={() => handleDelete(schoolClass.id)}
@@ -301,6 +341,17 @@ export default function ClassesPage() {
           open={detailOpen}
           onOpenChange={setDetailOpen}
           schoolClass={selectedClass}
+          classes={classes}
+          registeredStudents={
+            selectedClass ? getRegisteredStudents(selectedClass.name) : []
+          }
+          availableStudents={students.filter(
+            (student) =>
+              !studentClassMap[student.id] ||
+              studentClassMap[student.id] !== selectedClass?.name,
+          )}
+          onAssignStudent={handleAssignStudent}
+          onRemoveStudent={handleRemoveStudent}
         />
       </section>
     </DashboardLayout>
@@ -309,11 +360,13 @@ export default function ClassesPage() {
 
 function ClassCard({
   schoolClass,
+  studentCount,
   onDetail,
   onEdit,
   onDelete,
 }: {
   schoolClass: SchoolClass;
+  studentCount: number;
   onDetail: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -360,7 +413,7 @@ function ClassCard({
             <div className="flex items-center gap-2 text-slate-600">
               <Users size={17} />
               <span className="font-semibold">
-                {schoolClass.totalStudents} siswa
+                {studentCount} siswa terdaftar
               </span>
             </div>
 
@@ -540,18 +593,28 @@ type ClassDetailDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   schoolClass: SchoolClass | null;
+  classes: SchoolClass[];
+  registeredStudents: typeof students;
+  availableStudents: typeof students;
+  onAssignStudent: (studentId: string, className: string) => void;
+  onRemoveStudent: (studentId: string) => void;
 };
 
 function ClassDetailDialog({
   open,
   onOpenChange,
   schoolClass,
+  classes,
+  registeredStudents,
+  availableStudents,
+  onAssignStudent,
+  onRemoveStudent,
 }: ClassDetailDialogProps) {
-  if (!schoolClass) return null;
+  const [newStudentId, setNewStudentId] = useState("");
+  const [moveStudentId, setMoveStudentId] = useState("");
+  const [targetClassName, setTargetClassName] = useState("");
 
-  const registeredStudents = students.filter(
-    (student) => student.className === schoolClass.name,
-  );
+  if (!schoolClass) return null;
 
   const detailItems = [
     {
@@ -600,9 +663,87 @@ function ClassDetailDialog({
               <h3 className="text-xl font-extrabold text-slate-900">
                 {schoolClass.name}
               </h3>
-              <p className="mt-1 text-sm text-slate-600">
-                {schoolClass.major} • {schoolClass.academicYear}
+            <p className="mt-1 text-sm text-slate-600">
+                {schoolClass.major} • {schoolClass.academicYear} • Status aktif
               </p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-4">
+              <Button
+                className="h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => {
+                  if (!newStudentId) return;
+                  onAssignStudent(newStudentId, schoolClass.name);
+                  setNewStudentId("");
+                }}
+              >
+                <UserPlus size={16} className="mr-2" />
+                Tambah Siswa
+              </Button>
+              <Button
+                variant="outline"
+                className="h-12 rounded-2xl"
+                onClick={() => {
+                  if (!moveStudentId || !targetClassName) return;
+                  onAssignStudent(moveStudentId, targetClassName);
+                  setMoveStudentId("");
+                  setTargetClassName("");
+                }}
+              >
+                <ArrowRightLeft size={16} className="mr-2" />
+                Pindahkan Siswa
+              </Button>
+              <Button variant="outline" className="h-12 rounded-2xl">
+                <Pencil size={16} className="mr-2" />
+                Ubah Wali Kelas
+              </Button>
+              <Button variant="outline" className="h-12 rounded-2xl">
+                <Filter size={16} className="mr-2" />
+                Status Kelas
+              </Button>
+            </div>
+
+            <div className="grid gap-3 rounded-2xl border bg-slate-50 p-4 lg:grid-cols-[1fr_1fr_1fr]">
+              <select
+                className="h-11 rounded-2xl border bg-white px-4 text-sm text-slate-700"
+                value={newStudentId}
+                onChange={(event) => setNewStudentId(event.target.value)}
+              >
+                <option value="">Pilih siswa untuk ditambahkan</option>
+                {availableStudents.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.fullName} - {student.nis}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="h-11 rounded-2xl border bg-white px-4 text-sm text-slate-700"
+                value={moveStudentId}
+                onChange={(event) => setMoveStudentId(event.target.value)}
+              >
+                <option value="">Pilih siswa untuk dipindahkan</option>
+                {registeredStudents.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.fullName}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="h-11 rounded-2xl border bg-white px-4 text-sm text-slate-700"
+                value={targetClassName}
+                onChange={(event) => setTargetClassName(event.target.value)}
+              >
+                <option value="">Pindah ke kelas</option>
+                {classes
+                  .filter((item) => item.name !== schoolClass.name)
+                  .map((item) => (
+                    <option key={item.id} value={item.name}>
+                      {item.name} - {item.academicYear}
+                    </option>
+                  ))}
+              </select>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -647,6 +788,9 @@ function ClassDetailDialog({
                       <th className="px-4 py-3 font-semibold text-slate-600">
                         Status
                       </th>
+                      <th className="px-4 py-3 font-semibold text-slate-600">
+                        Aksi Kelas
+                      </th>
                     </tr>
                   </thead>
 
@@ -665,13 +809,38 @@ function ClassDetailDialog({
                             {student.status}
                           </Badge>
                         </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-full"
+                              onClick={() => {
+                                setMoveStudentId(student.id);
+                                setTargetClassName("");
+                              }}
+                            >
+                              <ArrowRightLeft size={13} className="mr-1" />
+                              Pindah
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-full text-red-600 hover:text-red-700"
+                              onClick={() => onRemoveStudent(student.id)}
+                            >
+                              <UserMinus size={13} className="mr-1" />
+                              Keluarkan
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
 
                     {registeredStudents.length === 0 && (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={7}
                           className="px-4 py-10 text-center text-slate-500"
                         >
                           Belum ada siswa yang terdaftar di kelas ini.
@@ -680,6 +849,36 @@ function ClassDetailDialog({
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border bg-slate-50 p-4">
+                <p className="text-xs font-semibold text-slate-500">
+                  Alur pindah kelas
+                </p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  Pilih siswa, tentukan kelas tujuan, lalu data jadwal, mapel,
+                  absensi, dan nilai berikutnya mengikuti kelas baru.
+                </p>
+              </div>
+              <div className="rounded-2xl border bg-slate-50 p-4">
+                <p className="text-xs font-semibold text-slate-500">
+                  Tahun ajaran
+                </p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  {schoolClass.academicYear} bisa diubah untuk menjaga riwayat
+                  penempatan siswa tetap rapi.
+                </p>
+              </div>
+              <div className="rounded-2xl border bg-slate-50 p-4">
+                <p className="text-xs font-semibold text-slate-500">
+                  Status kelas
+                </p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  Kelas aktif dipakai untuk jadwal, mapel, absensi, nilai, dan
+                  laporan real-time.
+                </p>
               </div>
             </div>
 
