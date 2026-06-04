@@ -4,11 +4,20 @@ export type SubjectItem = {
     id: string;
     name: string;
     code?: string;
+    classId?: string;
+    teacherId?: string | null;
     description?: string;
     credits?: number;
     grade?: string;
     major?: string;
     status?: string;
+    class?: {
+        id: string;
+        name: string;
+        grade: string;
+        major: string;
+        academicYear: string;
+    } | null;
     teacher?: {
         id: string;
         fullName: string;
@@ -28,8 +37,26 @@ type SubjectSingleResponse = {
     data: SubjectItem;
 };
 
-export async function getSubjects(token: string) {
-    return apiRequest<SubjectListResponse>("/subjects", {
+type SubjectQuery = {
+    classId?: string;
+    status?: string;
+    search?: string;
+};
+
+function toQueryString(query?: SubjectQuery) {
+    if (!query) return "";
+
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+    });
+
+    const queryString = params.toString();
+    return queryString ? `?${queryString}` : "";
+}
+
+export async function getSubjects(token: string, query?: SubjectQuery) {
+    return apiRequest<SubjectListResponse>(`/subjects${toQueryString(query)}`, {
         method: "GET",
         token,
     });

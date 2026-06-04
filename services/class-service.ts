@@ -42,6 +42,21 @@ type ClassDetailResponse = {
   data: ClassDetail;
 };
 
+type ClassSingleResponse = {
+  message: string;
+  status: string;
+  data: ClassItem;
+};
+
+export type ClassPayload = {
+  name: string;
+  grade: "X" | "XI" | "XII";
+  major: "IPA" | "IPS" | "AGAMA";
+  academicYear: string;
+  homeroomTeacherId?: string | null;
+  status: "ACTIVE" | "INACTIVE";
+};
+
 export async function getClasses(token: string) {
   return apiRequest<ClassResponse>("/classes", {
     method: "GET",
@@ -52,6 +67,29 @@ export async function getClasses(token: string) {
 export async function getClassById(id: string, token: string) {
   return apiRequest<ClassDetailResponse>(`/classes/${id}`, {
     method: "GET",
+    token,
+  });
+}
+
+export async function createClass(token: string, body: ClassPayload) {
+  return apiRequest<ClassSingleResponse>("/classes", {
+    method: "POST",
+    token,
+    body,
+  });
+}
+
+export async function updateClass(token: string, id: string, body: ClassPayload) {
+  return apiRequest<ClassSingleResponse>(`/classes/${id}`, {
+    method: "PUT",
+    token,
+    body,
+  });
+}
+
+export async function deleteClass(token: string, id: string) {
+  return apiRequest<{ message: string; status: string }>(`/classes/${id}`, {
+    method: "DELETE",
     token,
   });
 }

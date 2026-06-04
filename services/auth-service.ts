@@ -15,7 +15,13 @@ export type LoginResponse = {
             name: string;
             email: string;
             username: string;
-            role: "ADMIN" | "TEACHER" | "HOMEROOM_TEACHER" | "STUDENT";
+            role:
+                | "ADMIN"
+                | "TEACHER"
+                | "HOMEROOM_TEACHER"
+                | "STUDENT"
+                | "BK"
+                | "HEADMASTER";
             status: "ACTIVE" | "INACTIVE";
         };
     };

@@ -5,13 +5,22 @@ export type TeacherItem = {
     nip?: string;
     fullName: string;
     gender: string;
-    email: string;
+    email?: string;
     phone?: string;
     address?: string;
     subject?: string;
     position?: string;
     status: string;
     photo?: string;
+    account?: {
+        id: string;
+        name?: string;
+        email: string;
+        username: string;
+        role: "TEACHER" | "HOMEROOM_TEACHER" | string;
+        status: "ACTIVE" | "INACTIVE" | string;
+        lastLogin?: string | null;
+    } | null;
 };
 
 type TeacherListResponse = {
@@ -42,6 +51,34 @@ export async function getTeacher(token: string, id: string) {
 
 export async function createTeacher(token: string, body: Partial<TeacherItem>) {
     return apiRequest<TeacherSingleResponse>("/teachers", {
+        method: "POST",
+        token,
+        body,
+    });
+}
+
+type CreateTeacherAccountPayload = {
+    email?: string;
+    username?: string;
+    password?: string;
+    role?: "TEACHER" | "HOMEROOM_TEACHER";
+};
+
+type CreateTeacherAccountResponse = {
+    message: string;
+    status: string;
+    data: {
+        teacher: TeacherItem;
+        defaultPassword: string;
+    };
+};
+
+export async function createTeacherAccount(
+    token: string,
+    id: string,
+    body: CreateTeacherAccountPayload,
+) {
+    return apiRequest<CreateTeacherAccountResponse>(`/teachers/${id}/create-account`, {
         method: "POST",
         token,
         body,

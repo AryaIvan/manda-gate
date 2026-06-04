@@ -1,6 +1,12 @@
 import { create } from "zustand";
 
-type UserRole = "ADMIN" | "TEACHER" | "HOMEROOM_TEACHER" | "STUDENT";
+type UserRole =
+  | "ADMIN"
+  | "TEACHER"
+  | "HOMEROOM_TEACHER"
+  | "STUDENT"
+  | "BK"
+  | "HEADMASTER";
 type AccountStatus = "ACTIVE" | "INACTIVE";
 
 export type AuthUser = {
@@ -23,14 +29,23 @@ type AuthState = {
   loadAuth: () => void;
 };
 
+function persistAuth(user: AuthUser, token: string) {
+  localStorage.setItem("manda_token", token);
+  localStorage.setItem("manda_user", JSON.stringify(user));
+}
+
+function clearPersistedAuth() {
+  localStorage.removeItem("manda_token");
+  localStorage.removeItem("manda_user");
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   token: null,
   isAuthenticated: false,
 
   setAuth: (user, token) => {
-    localStorage.setItem("manda_token", token);
-    localStorage.setItem("manda_user", JSON.stringify(user));
+    persistAuth(user, token);
 
     set({
       user,
@@ -40,8 +55,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   login: (user, token) => {
-    localStorage.setItem("manda_token", token);
-    localStorage.setItem("manda_user", JSON.stringify(user));
+    persistAuth(user, token);
 
     set({
       user,
@@ -51,8 +65,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    localStorage.removeItem("manda_token");
-    localStorage.removeItem("manda_user");
+    clearPersistedAuth();
 
     set({
       user: null,
@@ -66,11 +79,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     const user = localStorage.getItem("manda_user");
 
     if (token && user) {
-      set({
-        token,
-        user: JSON.parse(user),
-        isAuthenticated: true,
-      });
+      try {
+        set({
+          token,
+          user: JSON.parse(user) as AuthUser,
+          isAuthenticated: true,
+        });
+      } catch {
+        clearPersistedAuth();
+        set({
+          user: null,
+          token: null,
+          isAuthenticated: false,
+        });
+      }
     }
   },
 }));

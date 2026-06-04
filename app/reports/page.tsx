@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Download,
@@ -110,42 +110,56 @@ export default function ReportsPage() {
   const [reportData, setReportData] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const activeReport = reportTypes.find((item) => item.type === selectedType)!;
 
-  useEffect(() => {
-    async function fetchReport() {
-      if (!token) {
-        setLoading(false);
+  const fetchReport = useCallback(async (showLoading = false) => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (showLoading) setLoading(true);
+      setError("");
+
+      if (selectedType === "Ringkasan") {
+        const response = await getSummaryReport(token);
+        setSummary(response.data);
+        setReportData(response.data);
+        setLastUpdated(new Date());
         return;
       }
 
-      try {
-        setLoading(true);
-        setError("");
-
-        if (selectedType === "Ringkasan") {
-          const response = await getSummaryReport(token);
-          setSummary(response.data);
-          setReportData(response.data);
-          return;
-        }
-
-        const response = await getReportData<unknown>(token, activeReport.endpoint);
-        setReportData(response.data);
-      } catch (error) {
-        setError(
-          error instanceof Error
-            ? error.message
-            : "Gagal memuat laporan dari backend.",
-        );
-      } finally {
-        setLoading(false);
-      }
+      const response = await getReportData<unknown>(token, activeReport.endpoint);
+      setReportData(response.data);
+      setLastUpdated(new Date());
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Gagal memuat laporan dari backend.",
+      );
+    } finally {
+      setLoading(false);
     }
-
-    fetchReport();
   }, [activeReport.endpoint, selectedType, token]);
+
+  useEffect(() => {
+    const initialRefreshId = window.setTimeout(() => {
+      fetchReport(true);
+    }, 0);
+
+    const intervalId = window.setInterval(() => {
+      fetchReport(false);
+    }, 30000);
+
+    return () => {
+      window.clearTimeout(initialRefreshId);
+      window.clearInterval(intervalId);
+    };
+  }, [fetchReport]);
 
   const columns = reportData ? objectToColumns(reportData) : [];
   const rows = useMemo(() => {
@@ -169,6 +183,16 @@ export default function ReportsPage() {
             <p className="mt-1 text-slate-500">
               Semua laporan ditarik langsung dari endpoint backend.
             </p>
+            {lastUpdated && (
+              <p className="mt-1 text-xs font-semibold text-emerald-700">
+                Auto-refresh aktif. Terakhir sinkron:{" "}
+                {lastUpdated.toLocaleTimeString("id-ID", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">

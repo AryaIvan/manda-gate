@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Eye,
   Filter,
@@ -24,12 +24,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
+  ClassPayload,
   ClassDetail,
   ClassItem,
   ClassStudent,
+  createClass,
+  deleteClass,
   getClassById,
   getClasses,
+  updateClass,
 } from "@/services/class-service";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -55,6 +60,28 @@ const studentStatusLabels: Record<ClassStudent["status"], string> = {
   GRADUATED: "Lulus",
 };
 
+type ClassForm = ClassPayload;
+
+const defaultClassForm: ClassForm = {
+  name: "",
+  grade: "X",
+  major: "IPA",
+  academicYear: "2026/2027",
+  homeroomTeacherId: null,
+  status: "ACTIVE",
+};
+
+function classToForm(schoolClass: ClassItem): ClassForm {
+  return {
+    name: schoolClass.name,
+    grade: schoolClass.grade,
+    major: schoolClass.major,
+    academicYear: schoolClass.academicYear,
+    homeroomTeacherId: schoolClass.homeroomTeacher?.id ?? null,
+    status: schoolClass.status,
+  };
+}
+
 export default function ClassesPage() {
   const { token } = useAuthStore();
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -65,8 +92,18 @@ export default function ClassesPage() {
   const [majorFilter, setMajorFilter] = useState("Semua");
   const [yearFilter, setYearFilter] = useState("Semua");
   const [detailOpen, setDetailOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
+  const [form, setForm] = useState<ClassForm>(defaultClassForm);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassDetail | null>(null);
+
+  const refreshClasses = useCallback(async () => {
+    if (!token) return;
+
+    const response = await getClasses(token);
+    setClasses(response.data);
+  }, [token]);
 
   useEffect(() => {
     async function fetchClasses() {
@@ -79,8 +116,7 @@ export default function ClassesPage() {
         setLoading(true);
         setError("");
 
-        const response = await getClasses(token);
-        setClasses(response.data);
+        await refreshClasses();
       } catch (error) {
         setError(
           error instanceof Error
@@ -93,7 +129,7 @@ export default function ClassesPage() {
     }
 
     fetchClasses();
-  }, [token]);
+  }, [refreshClasses, token]);
 
   const academicYears = useMemo(
     () => Array.from(new Set(classes.map((item) => item.academicYear))),
@@ -146,6 +182,64 @@ export default function ClassesPage() {
     }
   };
 
+  const handleChange = (field: keyof ClassForm, value: string) => {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value || (field === "homeroomTeacherId" ? null : value),
+    }));
+  };
+
+  const handleAdd = () => {
+    setEditingClass(null);
+    setForm(defaultClassForm);
+    setFormOpen(true);
+  };
+
+  const handleEdit = (schoolClass: ClassItem) => {
+    setEditingClass(schoolClass);
+    setForm(classToForm(schoolClass));
+    setFormOpen(true);
+  };
+
+  const handleDelete = async (schoolClass: ClassItem) => {
+    if (!token) return;
+    const confirmed = confirm(`Hapus kelas ${schoolClass.name}?`);
+    if (!confirmed) return;
+
+    try {
+      setError("");
+      await deleteClass(token, schoolClass.id);
+      await refreshClasses();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Kelas gagal dihapus.");
+    }
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token) return;
+
+    if (!form.name || !form.grade || !form.major || !form.academicYear) {
+      alert("Nama kelas, tingkat, jurusan, dan tahun ajaran wajib diisi.");
+      return;
+    }
+
+    try {
+      setError("");
+      if (editingClass) {
+        await updateClass(token, editingClass.id, form);
+      } else {
+        await createClass(token, form);
+      }
+      await refreshClasses();
+      setFormOpen(false);
+      setEditingClass(null);
+      setForm(defaultClassForm);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Data kelas gagal disimpan.");
+    }
+  };
+
   return (
     <DashboardLayout>
       <section className="space-y-6">
@@ -163,7 +257,7 @@ export default function ClassesPage() {
             </p>
           </div>
 
-          <Button className="bg-emerald-600 hover:bg-emerald-700">
+          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleAdd}>
             <Plus size={16} className="mr-2" />
             Tambah Kelas
           </Button>
@@ -245,6 +339,8 @@ export default function ClassesPage() {
                 key={schoolClass.id}
                 schoolClass={schoolClass}
                 onDetail={() => handleDetail(schoolClass)}
+                onEdit={() => handleEdit(schoolClass)}
+                onDelete={() => handleDelete(schoolClass)}
               />
             ))}
 
@@ -262,6 +358,21 @@ export default function ClassesPage() {
           schoolClass={selectedClass}
           loading={detailLoading}
         />
+
+        <ClassFormDialog
+          open={formOpen}
+          onOpenChange={setFormOpen}
+          title={editingClass ? "Edit Kelas" : "Tambah Kelas"}
+          description={
+            editingClass
+              ? "Ubah informasi kelas yang tersimpan di backend."
+              : "Tambahkan kelas baru ke database MANDA Gate."
+          }
+          form={form}
+          onChange={handleChange}
+          onSubmit={handleSubmit}
+          submitLabel={editingClass ? "Simpan Perubahan" : "Simpan Kelas"}
+        />
       </section>
     </DashboardLayout>
   );
@@ -270,9 +381,13 @@ export default function ClassesPage() {
 function ClassCard({
   schoolClass,
   onDetail,
+  onEdit,
+  onDelete,
 }: {
   schoolClass: ClassItem;
   onDetail: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   return (
     <Card
@@ -338,7 +453,14 @@ function ClassCard({
               Detail
             </Button>
 
-            <Button variant="outline" size="sm" disabled>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit();
+              }}
+            >
               <Pencil size={14} className="mr-1" />
               Edit
             </Button>
@@ -347,7 +469,10 @@ function ClassCard({
               variant="outline"
               size="sm"
               className="text-red-600 hover:text-red-700"
-              disabled
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete();
+              }}
             >
               <Trash2 size={14} className="mr-1" />
               Hapus
@@ -356,6 +481,110 @@ function ClassCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ClassFormDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  form,
+  onChange,
+  onSubmit,
+  submitLabel,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  form: ClassForm;
+  onChange: (field: keyof ClassForm, value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  submitLabel: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!w-[min(760px,calc(100vw-32px))] !max-w-none max-h-[88vh] overflow-y-auto rounded-3xl p-6">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={onSubmit} className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <Label>Nama Kelas</Label>
+              <Input
+                placeholder="Contoh: X IPA 1"
+                value={form.name}
+                onChange={(event) => onChange("name", event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tingkat</Label>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={form.grade}
+                onChange={(event) => onChange("grade", event.target.value)}
+              >
+                <option value="X">X</option>
+                <option value="XI">XI</option>
+                <option value="XII">XII</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Jurusan</Label>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={form.major}
+                onChange={(event) => onChange("major", event.target.value)}
+              >
+                <option value="IPA">IPA</option>
+                <option value="IPS">IPS</option>
+                <option value="AGAMA">Agama</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tahun Ajaran</Label>
+              <Input
+                placeholder="Contoh: 2026/2027"
+                value={form.academicYear}
+                onChange={(event) => onChange("academicYear", event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={form.status}
+                onChange={(event) => onChange("status", event.target.value)}
+              >
+                <option value="ACTIVE">Aktif</option>
+                <option value="INACTIVE">Nonaktif</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
+              Batal
+            </Button>
+            <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">
+              {submitLabel}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

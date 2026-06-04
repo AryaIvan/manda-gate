@@ -10,6 +10,7 @@ import {
   TeacherItem as Teacher,
   getTeachers,
   createTeacher,
+  createTeacherAccount,
   updateTeacher,
   deleteTeacher,
 } from "@/services/teacher-service";
@@ -67,14 +68,43 @@ function teacherToForm(teacher: Teacher): TeacherForm {
   return {
     nip: teacher.nip || "",
     fullName: teacher.fullName,
-    gender: teacher.gender as TeacherForm["gender"],
-    email: teacher.email,
+    gender: fromApiGender(teacher.gender),
+    email: getTeacherEmail(teacher) === "-" ? "" : getTeacherEmail(teacher),
     phone: teacher.phone || "",
     address: teacher.address || "",
     subject: teacher.subject || "Matematika",
-    position: teacher.position || "Guru Mata Pelajaran",
-    status: teacher.status as TeacherForm["status"],
+    position: getTeacherPosition(teacher),
+    status: fromApiStatus(teacher.status),
   };
+}
+
+function fromApiGender(gender: string): TeacherForm["gender"] {
+  if (gender === "MALE") return "Laki-laki";
+  if (gender === "FEMALE") return "Perempuan";
+  return gender as TeacherForm["gender"];
+}
+
+function toApiGender(gender: TeacherForm["gender"]) {
+  return gender === "Laki-laki" ? "MALE" : "FEMALE";
+}
+
+function fromApiStatus(status: string): TeacherForm["status"] {
+  if (status === "ACTIVE") return "Aktif";
+  if (status === "INACTIVE") return "Tidak Aktif";
+  return status as TeacherForm["status"];
+}
+
+function toApiStatus(status: TeacherForm["status"]) {
+  return status === "Aktif" ? "ACTIVE" : "INACTIVE";
+}
+
+function getTeacherEmail(teacher: Teacher) {
+  return teacher.account?.email ?? teacher.email ?? "-";
+}
+
+function getTeacherPosition(teacher: Teacher) {
+  if (teacher.account?.role === "HOMEROOM_TEACHER") return "Wali Kelas";
+  return teacher.position ?? "Guru Mata Pelajaran";
 }
 
 export default function TeachersPage() {
@@ -123,9 +153,9 @@ export default function TeachersPage() {
       return (
         teacher.fullName.toLowerCase().includes(keyword) ||
         (teacher.nip ?? "").toLowerCase().includes(keyword) ||
-        teacher.email.toLowerCase().includes(keyword) ||
+        getTeacherEmail(teacher).toLowerCase().includes(keyword) ||
         (teacher.subject ?? "").toLowerCase().includes(keyword) ||
-        (teacher.position ?? "").toLowerCase().includes(keyword)
+        getTeacherPosition(teacher).toLowerCase().includes(keyword)
       );
     });
   }, [search, teachers]);
@@ -138,8 +168,8 @@ export default function TeachersPage() {
   };
 
   const validateForm = () => {
-    if (!form.nip || !form.fullName || !form.email || !form.subject) {
-      alert("NIP, nama lengkap, email, dan mata pelajaran wajib diisi.");
+    if (!form.nip || !form.fullName || !form.subject) {
+      alert("NIP, nama lengkap, dan mata pelajaran wajib diisi.");
       return false;
     }
 
@@ -154,15 +184,23 @@ export default function TeachersPage() {
       const res = await createTeacher(token, {
         nip: form.nip,
         fullName: form.fullName,
-        gender: form.gender,
-        email: form.email,
+        gender: toApiGender(form.gender),
         phone: form.phone,
         address: form.address,
         subject: form.subject,
-        position: form.position,
-        status: form.status,
+        status: toApiStatus(form.status),
       });
-      setTeachers((prev) => [res.data, ...prev]);
+
+      if (form.email) {
+        await createTeacherAccount(token, res.data.id, {
+          email: form.email,
+          role:
+            form.position === "Wali Kelas" ? "HOMEROOM_TEACHER" : "TEACHER",
+        });
+      }
+
+      const refreshed = await getTeachers(token);
+      setTeachers(refreshed.data);
       setForm(defaultForm);
       setAddOpen(false);
     } catch (err: unknown) {
@@ -179,13 +217,11 @@ export default function TeachersPage() {
       const res = await updateTeacher(token, selectedTeacher.id, {
         nip: form.nip,
         fullName: form.fullName,
-        gender: form.gender,
-        email: form.email,
+        gender: toApiGender(form.gender),
         phone: form.phone,
         address: form.address,
         subject: form.subject,
-        position: form.position,
-        status: form.status,
+        status: toApiStatus(form.status),
       });
       setTeachers((prev) =>
         prev.map((t) => (t.id === selectedTeacher.id ? res.data : t))
@@ -310,12 +346,12 @@ export default function TeachersPage() {
                         {teacher.nip}
                       </TableCell>
                       <TableCell>{teacher.fullName}</TableCell>
-                      <TableCell>{teacher.gender}</TableCell>
-                      <TableCell>{teacher.email}</TableCell>
+                      <TableCell>{fromApiGender(teacher.gender)}</TableCell>
+                      <TableCell>{getTeacherEmail(teacher)}</TableCell>
                       <TableCell>{teacher.subject}</TableCell>
-                      <TableCell>{teacher.position}</TableCell>
+                      <TableCell>{getTeacherPosition(teacher)}</TableCell>
                       <TableCell>
-                        <StatusBadge status={teacher.status} />
+                        <StatusBadge status={fromApiStatus(teacher.status)} />
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
@@ -583,11 +619,11 @@ function TeacherDetailDialog({
     },
     {
       label: "Jenis Kelamin",
-      value: teacher.gender,
+      value: fromApiGender(teacher.gender),
     },
     {
       label: "Email",
-      value: teacher.email,
+      value: getTeacherEmail(teacher),
     },
     {
       label: "No. HP",
@@ -603,11 +639,11 @@ function TeacherDetailDialog({
     },
     {
       label: "Jabatan",
-      value: teacher.position,
+      value: getTeacherPosition(teacher),
     },
     {
       label: "Status",
-      value: teacher.status,
+      value: fromApiStatus(teacher.status),
     },
   ];
 
@@ -627,7 +663,7 @@ function TeacherDetailDialog({
               {teacher.fullName}
             </h3>
             <p className="text-sm text-slate-500">
-              {teacher.subject} • {teacher.position}
+              {teacher.subject} • {getTeacherPosition(teacher)}
             </p>
           </div>
 

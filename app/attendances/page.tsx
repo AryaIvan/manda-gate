@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarCheck,
   Download,
@@ -14,7 +14,16 @@ import {
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { AttendanceBadge } from "@/components/shared/attendance-badge";
-import { getAttendances } from "@/services/attendance-service";
+import {
+  createAttendance,
+  deleteAttendance,
+  getAttendances,
+  updateAttendance,
+} from "@/services/attendance-service";
+import { ClassItem, getClasses } from "@/services/class-service";
+import { getStudents, StudentItem } from "@/services/student-service";
+import { getSubjects, SubjectItem } from "@/services/subject-service";
+import { getTeachers, TeacherItem } from "@/services/teacher-service";
 import { useAuthStore } from "@/store/auth-store";
 import { Attendance, AttendanceStatus } from "@/types/attendance";
 
@@ -50,17 +59,6 @@ const defaultForm: AttendanceForm = {
   note: "",
 };
 
-const classOptions = [
-  "X IPA 1",
-  "X IPS 1",
-  "XI IPA 1",
-  "XI IPS 1",
-  "XI Agama",
-  "XII IPA 1",
-  "XII IPS 1",
-  "XII Agama",
-];
-
 function attendanceToForm(attendance: Attendance): AttendanceForm {
   return {
     studentName: attendance.studentName,
@@ -71,6 +69,14 @@ function attendanceToForm(attendance: Attendance): AttendanceForm {
     status: attendance.status,
     note: attendance.note || "",
   };
+}
+
+function getStudentClass(student: StudentItem) {
+  return student.currentClass ?? student.class ?? null;
+}
+
+function getTeacherName(teacher?: TeacherItem | null) {
+  return teacher?.fullName ?? "-";
 }
 
 function getStatusText(status: AttendanceStatus) {
@@ -153,6 +159,10 @@ function getDominantStatus(items: Attendance[]) {
 export default function AttendancesPage() {
   const { token } = useAuthStore();
   const [attendances, setAttendances] = useState<Attendance[]>([]);
+  const [students, setStudents] = useState<StudentItem[]>([]);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [teachers, setTeachers] = useState<TeacherItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -171,42 +181,82 @@ export default function AttendancesPage() {
   const [selectedStudentClass, setSelectedStudentClass] = useState("");
   const [form, setForm] = useState<AttendanceForm>(defaultForm);
 
+  const refreshAttendances = useCallback(async (showLoading = false) => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (showLoading) setLoading(true);
+      setError("");
+      const response = await getAttendances(token);
+      setAttendances(
+        response.data.map((item) => ({
+          id: item.id,
+          studentId: item.student?.id,
+          classId: item.class?.id,
+          subjectId: item.subject?.id,
+          teacherId: item.teacher?.id ?? null,
+          studentName: item.student?.fullName ?? "-",
+          className: item.class?.name ?? "-",
+          subject: item.subject?.name ?? "-",
+          teacher: item.teacher?.fullName ?? "-",
+          date: item.date.slice(0, 10),
+          status: item.status,
+          note: item.note ?? "",
+        })),
+      );
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Gagal memuat data absensi dari backend.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
-    async function fetchAttendances() {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
+    async function fetchMasterData() {
+      if (!token) return;
 
       try {
-        setLoading(true);
-        setError("");
-        const response = await getAttendances(token);
-        setAttendances(
-          response.data.map((item) => ({
-            id: item.id,
-            studentName: item.student?.fullName ?? "-",
-            className: item.class?.name ?? "-",
-            subject: item.subject?.name ?? "-",
-            teacher: item.teacher?.fullName ?? "-",
-            date: item.date.slice(0, 10),
-            status: item.status,
-            note: item.note ?? "",
-          })),
-        );
+        const [studentsResponse, classesResponse, subjectsResponse, teachersResponse] =
+          await Promise.all([
+            getStudents(token),
+            getClasses(token),
+            getSubjects(token),
+            getTeachers(token),
+          ]);
+        setStudents(studentsResponse.data);
+        setClasses(classesResponse.data);
+        setSubjects(subjectsResponse.data);
+        setTeachers(teachersResponse.data);
       } catch (error) {
         setError(
           error instanceof Error
             ? error.message
-            : "Gagal memuat data absensi dari backend.",
+            : "Gagal memuat pilihan data absensi.",
         );
-      } finally {
-        setLoading(false);
       }
     }
 
-    fetchAttendances();
-  }, [token]);
+    const initialRefreshId = window.setTimeout(() => {
+      fetchMasterData();
+      refreshAttendances(true);
+    }, 0);
+
+    const intervalId = window.setInterval(() => {
+      refreshAttendances(false);
+    }, 30000);
+
+    return () => {
+      window.clearTimeout(initialRefreshId);
+      window.clearInterval(intervalId);
+    };
+  }, [refreshAttendances, token]);
 
   const filteredAttendances = useMemo(() => {
     return attendances.filter((attendance) => {
@@ -245,6 +295,26 @@ export default function AttendancesPage() {
     )
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  const selectedStudent = useMemo(() => {
+    return students.find((student) => student.fullName === form.studentName) ?? null;
+  }, [form.studentName, students]);
+
+  const selectedClass = useMemo(() => {
+    return classes.find((item) => item.name === form.className) ?? null;
+  }, [classes, form.className]);
+
+  const selectedSubject = useMemo(() => {
+    return subjects.find((subject) => subject.name === form.subject) ?? null;
+  }, [form.subject, subjects]);
+
+  const selectedTeacher = useMemo(() => {
+    return teachers.find((teacher) => teacher.fullName === form.teacher) ?? null;
+  }, [form.teacher, teachers]);
+
+  const classOptions = useMemo(() => {
+    return classes.length ? classes.map((item) => item.name) : [defaultForm.className];
+  }, [classes]);
+
   const handleChange = (field: keyof AttendanceForm, value: string) => {
     setForm((previous) => ({
       ...previous,
@@ -267,53 +337,52 @@ export default function AttendancesPage() {
     return true;
   };
 
-  const handleAddSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!validateForm()) return;
+    if (!validateForm() || !token) return;
+    if (!selectedStudent || !selectedClass || !selectedSubject) {
+      alert("Pastikan siswa, kelas, dan mata pelajaran dipilih dari data backend.");
+      return;
+    }
 
-    const newAttendance: Attendance = {
-      id: Date.now().toString(),
-      studentName: form.studentName,
-      className: form.className,
-      subject: form.subject,
-      teacher: form.teacher,
-      date: form.date,
-      status: form.status,
-      note: form.note,
-    };
-
-    setAttendances((previous) => [newAttendance, ...previous]);
-    setForm(defaultForm);
-    setAddOpen(false);
+    try {
+      await createAttendance(token, {
+        studentId: selectedStudent.id,
+        classId: selectedClass.id,
+        subjectId: selectedSubject.id,
+        teacherId: selectedTeacher?.id ?? null,
+        date: form.date,
+        status: form.status,
+        note: form.note,
+      });
+      await refreshAttendances(false);
+      setForm(defaultForm);
+      setAddOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal menyimpan absensi.");
+    }
   };
 
-  const handleEditSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!selectedAttendance) return;
+    if (!selectedAttendance || !token) return;
     if (!validateForm()) return;
 
-    const updatedAttendance: Attendance = {
-      ...selectedAttendance,
-      studentName: form.studentName,
-      className: form.className,
-      subject: form.subject,
-      teacher: form.teacher,
-      date: form.date,
-      status: form.status,
-      note: form.note,
-    };
-
-    setAttendances((previous) =>
-      previous.map((attendance) =>
-        attendance.id === selectedAttendance.id ? updatedAttendance : attendance
-      )
-    );
-
-    setSelectedAttendance(null);
-    setForm(defaultForm);
-    setEditOpen(false);
+    try {
+      await updateAttendance(token, selectedAttendance.id, {
+        date: form.date,
+        status: form.status,
+        note: form.note,
+      });
+      await refreshAttendances(false);
+      setSelectedAttendance(null);
+      setForm(defaultForm);
+      setEditOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal memperbarui absensi.");
+    }
   };
 
   const handleStudentDetail = (studentName: string, className: string) => {
@@ -328,14 +397,17 @@ export default function AttendancesPage() {
     setEditOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const confirmed = confirm("Yakin ingin menghapus data absensi ini?");
 
-    if (!confirmed) return;
+    if (!confirmed || !token) return;
 
-    setAttendances((previous) =>
-      previous.filter((attendance) => attendance.id !== id)
-    );
+    try {
+      await deleteAttendance(token, id);
+      await refreshAttendances(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal menghapus absensi.");
+    }
   };
 
   const resetFilter = () => {
@@ -386,7 +458,13 @@ export default function AttendancesPage() {
             <Button
               className="bg-emerald-600 hover:bg-emerald-700"
               onClick={() => {
-                setForm(defaultForm);
+                setForm({
+                  ...defaultForm,
+                  studentName: students[0]?.fullName ?? defaultForm.studentName,
+                  className: classes[0]?.name ?? defaultForm.className,
+                  subject: subjects[0]?.name ?? defaultForm.subject,
+                  teacher: teachers[0]?.fullName ?? defaultForm.teacher,
+                });
                 setAddOpen(true);
               }}
             >
@@ -488,6 +566,10 @@ export default function AttendancesPage() {
           open={addOpen}
           onOpenChange={setAddOpen}
           form={form}
+          students={students}
+          classOptions={classOptions}
+          subjects={subjects}
+          teachers={teachers}
           onChange={handleChange}
           onSubmit={handleAddSubmit}
           submitLabel="Simpan Absensi"
@@ -499,6 +581,10 @@ export default function AttendancesPage() {
           open={editOpen}
           onOpenChange={setEditOpen}
           form={form}
+          students={students}
+          classOptions={classOptions}
+          subjects={subjects}
+          teachers={teachers}
           onChange={handleChange}
           onSubmit={handleEditSubmit}
           submitLabel="Simpan Perubahan"
@@ -657,6 +743,10 @@ type AttendanceFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   form: AttendanceForm;
+  students: StudentItem[];
+  classOptions: string[];
+  subjects: SubjectItem[];
+  teachers: TeacherItem[];
   onChange: (field: keyof AttendanceForm, value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   submitLabel: string;
@@ -668,6 +758,10 @@ function AttendanceFormDialog({
   open,
   onOpenChange,
   form,
+  students,
+  classOptions,
+  subjects,
+  teachers,
   onChange,
   onSubmit,
   submitLabel,
@@ -710,13 +804,23 @@ function AttendanceFormDialog({
 
             <div className="space-y-2">
               <Label>Nama Siswa</Label>
-              <Input
-                placeholder="Contoh: Ahmad Fauzi"
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={form.studentName}
                 onChange={(event) =>
                   onChange("studentName", event.target.value)
                 }
-              />
+              >
+                {students.map((student) => {
+                  const studentClass = getStudentClass(student);
+                  return (
+                    <option key={student.id} value={student.fullName}>
+                      {student.fullName}
+                      {studentClass ? ` - ${studentClass.name}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
             </div>
 
             <div className="space-y-2">
@@ -741,30 +845,27 @@ function AttendanceFormDialog({
                 value={form.subject}
                 onChange={(event) => onChange("subject", event.target.value)}
               >
-                <option value="Al-Qur'an Hadis">Al-Qur&apos;an Hadis</option>
-                <option value="Akidah Akhlak">Akidah Akhlak</option>
-                <option value="Fikih">Fikih</option>
-                <option value="Bahasa Arab">Bahasa Arab</option>
-                <option value="Bahasa Indonesia">Bahasa Indonesia</option>
-                <option value="Bahasa Inggris">Bahasa Inggris</option>
-                <option value="Matematika">Matematika</option>
-                <option value="Biologi">Biologi</option>
-                <option value="Fisika">Fisika</option>
-                <option value="Kimia">Kimia</option>
-                <option value="Ekonomi">Ekonomi</option>
-                <option value="Geografi">Geografi</option>
-                <option value="Sosiologi">Sosiologi</option>
-                <option value="Informatika">Informatika</option>
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.name}>
+                    {subject.name}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div className="space-y-2">
               <Label>Guru Pengajar</Label>
-              <Input
-                placeholder="Contoh: Drs. Ahmad Zainuddin"
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={form.teacher}
                 onChange={(event) => onChange("teacher", event.target.value)}
-              />
+              >
+                {teachers.map((teacher) => (
+                  <option key={teacher.id} value={teacher.fullName}>
+                    {getTeacherName(teacher)}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2 md:col-span-2">

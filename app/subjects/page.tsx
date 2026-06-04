@@ -31,6 +31,7 @@ export default function SubjectsPage() {
   const [gradeFilter, setGradeFilter] = useState("Semua");
   const [majorFilter, setMajorFilter] = useState("Semua");
   const [selectedClassName, setSelectedClassName] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedSubject, setSelectedSubject] = useState<SubjectItem | null>(null);
   const [classDialogOpen, setClassDialogOpen] = useState(false);
   const [subjectDialogOpen, setSubjectDialogOpen] = useState(false);
@@ -85,12 +86,24 @@ export default function SubjectsPage() {
     });
   }, [search, gradeFilter, majorFilter, classes]);
 
-  // Subjects are currently global (not per-class in this backend response),
-  // show all subjects when a class is selected
-  const selectedClassSubjects = subjects;
+  const subjectsByClass = useMemo(() => {
+    return subjects.reduce<Record<string, SubjectItem[]>>((groups, subject) => {
+      const classId = subject.classId ?? subject.class?.id;
+      if (!classId) return groups;
 
-  const openClassSubjects = (className: string) => {
-    setSelectedClassName(className);
+      if (!groups[classId]) groups[classId] = [];
+      groups[classId].push(subject);
+      return groups;
+    }, {});
+  }, [subjects]);
+
+  const selectedClassSubjects = selectedClassId
+    ? subjectsByClass[selectedClassId] ?? []
+    : [];
+
+  const openClassSubjects = (schoolClass: ClassItem) => {
+    setSelectedClassName(schoolClass.name);
+    setSelectedClassId(schoolClass.id);
     setClassDialogOpen(true);
   };
 
@@ -197,7 +210,7 @@ export default function SubjectsPage() {
             <button
               key={schoolClass.id}
               type="button"
-              onClick={() => openClassSubjects(schoolClass.name)}
+              onClick={() => openClassSubjects(schoolClass)}
               className="rounded-3xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:border-emerald-200 hover:shadow-md"
             >
               <div className="flex items-start justify-between gap-3">
@@ -230,7 +243,7 @@ export default function SubjectsPage() {
                     Total Mapel
                   </p>
                   <p className="mt-1 text-xl font-extrabold text-emerald-700">
-                    {subjects.length}
+                    {subjectsByClass[schoolClass.id]?.length ?? 0}
                   </p>
                 </div>
               </div>
@@ -352,9 +365,10 @@ function SubjectDetailDialog({
   const detailItems = [
     { label: "Nama Mapel", value: subject.name },
     { label: "Kode", value: subject.code ?? "-" },
-    { label: "Deskripsi", value: subject.description ?? "-" },
-    { label: "Tingkat", value: subject.grade ?? "-" },
-    { label: "Jurusan", value: subject.major ?? "-" },
+    { label: "Kelas", value: subject.class?.name ?? "-" },
+    { label: "Tingkat", value: subject.class?.grade ?? subject.grade ?? "-" },
+    { label: "Jurusan", value: subject.class?.major ?? subject.major ?? "-" },
+    { label: "Tahun Ajaran", value: subject.class?.academicYear ?? "-" },
     { label: "Guru Pengampu", value: subject.teacher?.fullName ?? "-" },
     {
       label: "Status",

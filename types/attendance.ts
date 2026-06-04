@@ -7,6 +7,10 @@ export type AttendanceStatus =
 
 export type Attendance = {
   id: string;
+  studentId?: string;
+  classId?: string;
+  subjectId?: string;
+  teacherId?: string | null;
   studentName: string;
   className: string;
   subject: string;

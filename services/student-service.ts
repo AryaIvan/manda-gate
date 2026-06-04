@@ -16,6 +16,22 @@ export type StudentItem = {
     admissionYear?: number;
     status: string;
     photo?: string;
+    account?: {
+        id: string;
+        name?: string;
+        email: string;
+        username: string;
+        role: "STUDENT";
+        status: "ACTIVE" | "INACTIVE";
+        lastLogin?: string | null;
+    } | null;
+    currentClass?: {
+        id: string;
+        name: string;
+        grade: string;
+        major: string;
+        academicYear: string;
+    } | null;
     class?: {
         id: string;
         name: string;
@@ -37,6 +53,26 @@ type StudentSingleResponse = {
     data: StudentItem;
 };
 
+type CreateStudentAccountPayload = {
+    email?: string;
+    username?: string;
+    password?: string;
+};
+
+type CreateStudentAccountResponse = {
+    message: string;
+    status: string;
+    data: {
+        student: StudentItem;
+        defaultPassword: string;
+    };
+};
+
+type StudentPayload = Partial<StudentItem> & {
+    classId?: string;
+    academicYear?: string;
+};
+
 export async function getStudents(token: string) {
     return apiRequest<StudentListResponse>("/students", {
         method: "GET",
@@ -51,7 +87,7 @@ export async function getStudent(token: string, id: string) {
     });
 }
 
-export async function createStudent(token: string, body: Partial<StudentItem>) {
+export async function createStudent(token: string, body: StudentPayload) {
     return apiRequest<StudentSingleResponse>("/students", {
         method: "POST",
         token,
@@ -59,7 +95,7 @@ export async function createStudent(token: string, body: Partial<StudentItem>) {
     });
 }
 
-export async function updateStudent(token: string, id: string, body: Partial<StudentItem>) {
+export async function updateStudent(token: string, id: string, body: StudentPayload) {
     return apiRequest<StudentSingleResponse>(`/students/${id}`, {
         method: "PUT",
         token,
@@ -71,5 +107,17 @@ export async function deleteStudent(token: string, id: string) {
     return apiRequest<{ message: string; status: string }>(`/students/${id}`, {
         method: "DELETE",
         token,
+    });
+}
+
+export async function createStudentAccount(
+    token: string,
+    id: string,
+    body: CreateStudentAccountPayload,
+) {
+    return apiRequest<CreateStudentAccountResponse>(`/students/${id}/create-account`, {
+        method: "POST",
+        token,
+        body,
     });
 }

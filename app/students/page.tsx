@@ -10,9 +10,11 @@ import {
   StudentItem as Student,
   getStudents,
   createStudent,
+  createStudentAccount,
   updateStudent,
   deleteStudent,
 } from "@/services/student-service";
+import { ClassItem, getClasses } from "@/services/class-service";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,32 +73,83 @@ const defaultForm: StudentForm = {
   status: "Aktif",
 };
 
+function fromApiGender(gender: string): StudentForm["gender"] {
+  if (gender === "MALE") return "Laki-laki";
+  if (gender === "FEMALE") return "Perempuan";
+  return gender as StudentForm["gender"];
+}
+
+function toApiGender(gender: StudentForm["gender"]) {
+  return gender === "Laki-laki" ? "MALE" : "FEMALE";
+}
+
+function fromApiStatus(status: string): StudentForm["status"] {
+  if (status === "ACTIVE") return "Aktif";
+  if (status === "INACTIVE") return "Tidak Aktif";
+  if (status === "GRADUATED") return "Lulus";
+  return status as StudentForm["status"];
+}
+
+function toApiStatus(status: StudentForm["status"]) {
+  if (status === "Tidak Aktif") return "INACTIVE";
+  if (status === "Lulus") return "GRADUATED";
+  return "ACTIVE";
+}
+
+function getStudentClass(student: Student) {
+  return student.currentClass ?? student.class ?? null;
+}
+
+function getStudentClassName(student: Student) {
+  return getStudentClass(student)?.name ?? student.className ?? "-";
+}
+
+function getStudentMajor(student: Student) {
+  return getStudentClass(student)?.major ?? student.major ?? "-";
+}
+
+function getStudentAcademicYear(student: Student) {
+  return getStudentClass(student)?.academicYear ?? String(student.admissionYear ?? "-");
+}
+
+function getStudentEmail(student: Student) {
+  return student.account?.email ?? student.email ?? "-";
+}
+
+function formatDateInput(value?: string) {
+  if (!value) return "";
+  return value.slice(0, 10);
+}
+
 function studentToForm(student: Student): StudentForm {
+  const studentClass = getStudentClass(student);
+
   return {
     nis: student.nis,
     nisn: student.nisn,
     fullName: student.fullName,
-    gender: (student.gender === "MALE" ? "Laki-laki" : student.gender === "FEMALE" ? "Perempuan" : student.gender) as StudentForm["gender"],
+    gender: fromApiGender(student.gender),
     birthPlace: student.birthPlace || "",
-    birthDate: student.birthDate || "",
+    birthDate: formatDateInput(student.birthDate),
     address: student.address || "",
     phone: student.phone || "",
-    email: student.email || "",
-    className: student.class?.name || student.className || "X IPA 1",
-    major: student.class?.major || student.major || "IPA",
-    admissionYear: String(student.admissionYear || ""),
-    status: student.status as StudentForm["status"],
+    email: getStudentEmail(student) === "-" ? "" : getStudentEmail(student),
+    className: studentClass?.name || student.className || "X IPA 1",
+    major: studentClass?.major || student.major || "IPA",
+    admissionYear: getStudentAcademicYear(student),
+    status: fromApiStatus(student.status),
   };
 }
 
 export default function StudentsPage() {
   const { token } = useAuthStore();
   const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchStudents() {
+    async function fetchData() {
       if (!token) {
         setLoading(false);
         return;
@@ -105,8 +158,12 @@ export default function StudentsPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await getStudents(token);
-        setStudents(response.data);
+        const [studentsResponse, classesResponse] = await Promise.all([
+          getStudents(token),
+          getClasses(token),
+        ]);
+        setStudents(studentsResponse.data);
+        setClasses(classesResponse.data);
       } catch (error) {
         setError(
           error instanceof Error ? error.message : "Gagal memuat data siswa.",
@@ -116,7 +173,7 @@ export default function StudentsPage() {
       }
     }
 
-    fetchStudents();
+    fetchData();
   }, [token]);
 
   const [search, setSearch] = useState("");
@@ -136,10 +193,14 @@ export default function StudentsPage() {
         student.fullName.toLowerCase().includes(keyword) ||
         student.nis.toLowerCase().includes(keyword) ||
         student.nisn.toLowerCase().includes(keyword) ||
-        (student.className ?? "").toLowerCase().includes(keyword)
+        getStudentClassName(student).toLowerCase().includes(keyword)
       );
     });
   }, [search, students]);
+
+  const selectedClass = useMemo(() => {
+    return classes.find((item) => item.name === form.className) ?? null;
+  }, [classes, form.className]);
 
   const handleChange = (field: keyof StudentForm, value: string) => {
     setForm((previous) => ({
@@ -149,8 +210,8 @@ export default function StudentsPage() {
   };
 
   const validateForm = () => {
-    if (!form.nis || !form.nisn || !form.fullName || !form.email) {
-      alert("NIS, NISN, nama lengkap, dan email wajib diisi.");
+    if (!form.nis || !form.fullName || !form.gender) {
+      alert("NIS, nama lengkap, dan jenis kelamin wajib diisi.");
       return false;
     }
 
@@ -166,15 +227,23 @@ export default function StudentsPage() {
         nis: form.nis,
         nisn: form.nisn,
         fullName: form.fullName,
-        gender: form.gender,
-        birthPlace: form.birthPlace,
+        gender: toApiGender(form.gender),
         birthDate: form.birthDate,
         address: form.address,
         phone: form.phone,
-        email: form.email,
-        status: form.status,
+        status: toApiStatus(form.status),
+        classId: selectedClass?.id,
+        academicYear: selectedClass?.academicYear || form.admissionYear,
       });
-      setStudents((prev) => [res.data, ...prev]);
+
+      if (form.email) {
+        await createStudentAccount(token, res.data.id, {
+          email: form.email,
+        });
+      }
+
+      const refreshed = await getStudents(token);
+      setStudents(refreshed.data);
       setForm(defaultForm);
       setAddOpen(false);
     } catch (err: unknown) {
@@ -192,13 +261,11 @@ export default function StudentsPage() {
         nis: form.nis,
         nisn: form.nisn,
         fullName: form.fullName,
-        gender: form.gender,
-        birthPlace: form.birthPlace,
+        gender: toApiGender(form.gender),
         birthDate: form.birthDate,
         address: form.address,
         phone: form.phone,
-        email: form.email,
-        status: form.status,
+        status: toApiStatus(form.status),
       });
       setStudents((prev) =>
         prev.map((s) => (s.id === selectedStudent.id ? res.data : s))
@@ -324,11 +391,11 @@ export default function StudentsPage() {
                       </TableCell>
                       <TableCell>{student.nisn}</TableCell>
                       <TableCell>{student.fullName}</TableCell>
-                      <TableCell>{student.gender}</TableCell>
-                      <TableCell>{student.class?.name || student.className || "-"}</TableCell>
-                      <TableCell>{student.class?.major || student.major || "-"}</TableCell>
+                      <TableCell>{fromApiGender(student.gender)}</TableCell>
+                      <TableCell>{getStudentClassName(student)}</TableCell>
+                      <TableCell>{getStudentMajor(student)}</TableCell>
                       <TableCell>
-                        <StatusBadge status={student.status} />
+                        <StatusBadge status={fromApiStatus(student.status)} />
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
@@ -383,6 +450,7 @@ export default function StudentsPage() {
           open={addOpen}
           onOpenChange={setAddOpen}
           form={form}
+          classes={classes}
           onChange={handleChange}
           onSubmit={handleAddSubmit}
           submitLabel="Simpan Siswa"
@@ -394,6 +462,7 @@ export default function StudentsPage() {
           open={editOpen}
           onOpenChange={setEditOpen}
           form={form}
+          classes={classes}
           onChange={handleChange}
           onSubmit={handleEditSubmit}
           submitLabel="Simpan Perubahan"
@@ -415,6 +484,7 @@ type StudentFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   form: StudentForm;
+  classes: ClassItem[];
   onChange: (field: keyof StudentForm, value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   submitLabel: string;
@@ -426,10 +496,25 @@ function StudentFormDialog({
   open,
   onOpenChange,
   form,
+  classes,
   onChange,
   onSubmit,
   submitLabel,
 }: StudentFormDialogProps) {
+  const classOptions = classes.length
+    ? classes
+    : [
+        {
+          id: "fallback-x-ipa-1",
+          name: "X IPA 1",
+          grade: "X" as const,
+          major: "IPA" as const,
+          academicYear: "2026/2027",
+          status: "ACTIVE" as const,
+          totalStudents: 0,
+        },
+      ];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(920px,calc(100vw-32px))]! max-w-none! max-h-[90vh] overflow-y-auto rounded-3xl p-6">
@@ -513,10 +598,10 @@ function StudentFormDialog({
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <Label>Email</Label>
+              <Label>Email Akun Siswa</Label>
               <Input
                 type="email"
-                placeholder="Contoh: siswa@student.manda.sch.id"
+                placeholder="Opsional, untuk membuat akun login siswa"
                 value={form.email}
                 onChange={(event) => onChange("email", event.target.value)}
               />
@@ -540,15 +625,11 @@ function StudentFormDialog({
                   onChange("className", event.target.value)
                 }
               >
-                <option value="X IPA 1">X IPA 1</option>
-                <option value="X IPS 1">X IPS 1</option>
-                <option value="XI IPA 1">XI IPA 1</option>
-                <option value="XI IPS 1">XI IPS 1</option>
-                <option value="XII IPA 1">XII IPA 1</option>
-                <option value="XII IPS 1">XII IPS 1</option>
-                <option value="X Agama">X Agama</option>
-                <option value="XI Agama">XI Agama</option>
-                <option value="XII Agama">XII Agama</option>
+                {classOptions.map((item) => (
+                  <option key={item.id} value={item.name}>
+                    {item.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -640,7 +721,7 @@ function StudentDetailDialog({
     },
     {
       label: "Jenis Kelamin",
-      value: student.gender,
+      value: fromApiGender(student.gender),
     },
     {
       label: "Tempat Lahir",
@@ -660,23 +741,23 @@ function StudentDetailDialog({
     },
     {
       label: "Email",
-      value: student.email || "-",
+      value: getStudentEmail(student),
     },
     {
       label: "Kelas",
-      value: student.className,
+      value: getStudentClassName(student),
     },
     {
       label: "Jurusan",
-      value: student.major,
+      value: getStudentMajor(student),
     },
     {
-      label: "Tahun Masuk",
-      value: student.admissionYear,
+      label: "Tahun Ajaran",
+      value: getStudentAcademicYear(student),
     },
     {
       label: "Status",
-      value: student.status,
+      value: fromApiStatus(student.status),
     },
   ];
 
@@ -696,7 +777,7 @@ function StudentDetailDialog({
               {student.fullName}
             </h3>
             <p className="text-sm text-slate-500">
-              {student.className} • {student.major}
+              {getStudentClassName(student)} • {getStudentMajor(student)}
             </p>
           </div>
 

@@ -29,7 +29,7 @@ import { Input } from "@/components/ui/input";
 import { getSettings, getUsers, SystemSetting, UserAccountItem } from "@/services/setting-service";
 import { useAuthStore } from "@/store/auth-store";
 
-type AccountRole = "Admin" | "Guru" | "Wali Kelas" | "Siswa";
+type AccountRole = "Admin" | "Guru" | "Wali Kelas" | "Siswa" | "BK" | "Kepala Madrasah";
 type AccountStatus = "Aktif" | "Nonaktif" | "Belum Dibuat";
 
 type Account = {
@@ -45,7 +45,7 @@ type Account = {
   lastLogin: string;
 };
 
-const roleTabs: AccountRole[] = ["Admin", "Guru", "Wali Kelas", "Siswa"];
+const roleTabs: AccountRole[] = ["Admin", "Guru", "Wali Kelas", "Siswa", "BK", "Kepala Madrasah"];
 
 const rolePermissions: Record<AccountRole, string[]> = {
   Admin: [
@@ -77,6 +77,18 @@ const rolePermissions: Record<AccountRole, string[]> = {
     "Melihat pengumuman",
     "Mengubah profil/password",
   ],
+  BK: [
+    "Melihat data siswa",
+    "Melihat surat izin",
+    "Melihat catatan siswa",
+    "Melihat laporan kesiswaan",
+  ],
+  "Kepala Madrasah": [
+    "Melihat dashboard ringkasan",
+    "Melihat semua laporan",
+    "Melihat statistik akademik",
+    "Tidak wajib mengedit data teknis",
+  ],
 };
 
 const restrictedStudentAccess = [
@@ -94,6 +106,8 @@ function mapRole(role: UserAccountItem["role"]): AccountRole | null {
   if (role === "TEACHER") return "Guru";
   if (role === "HOMEROOM_TEACHER") return "Wali Kelas";
   if (role === "STUDENT") return "Siswa";
+  if (role === "BK") return "BK";
+  if (role === "HEADMASTER") return "Kepala Madrasah";
   return null;
 }
 
