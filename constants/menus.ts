@@ -28,13 +28,13 @@ export const sidebarMenus: SidebarMenu[] = [
     label: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
-    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM", "BK", "HEADMASTER"],
+    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM_TEACHER", "BK", "HEADMASTER"],
   },
   {
     label: "Data Siswa",
     href: "/students",
     icon: Users,
-    roles: ["ADMIN", "HOMEROOM", "BK"],
+    roles: ["ADMIN", "HOMEROOM_TEACHER", "BK"],
   },
   {
     label: "Data Guru",
@@ -46,7 +46,7 @@ export const sidebarMenus: SidebarMenu[] = [
     label: "Data Kelas",
     href: "/classes",
     icon: BookOpen,
-    roles: ["ADMIN", "HOMEROOM"],
+    roles: ["ADMIN", "HOMEROOM_TEACHER"],
   },
   {
     label: "Mata Pelajaran",
@@ -58,19 +58,19 @@ export const sidebarMenus: SidebarMenu[] = [
     label: "Jadwal",
     href: "/schedules",
     icon: CalendarDays,
-    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM"],
+    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM_TEACHER"],
   },
   {
     label: "Absensi",
     href: "/attendances",
     icon: ClipboardCheck,
-    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM"],
+    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM_TEACHER"],
   },
   {
     label: "Nilai",
     href: "/grades",
     icon: FileText,
-    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM"],
+    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM_TEACHER"],
   },
   {
     label: "Tugas",
@@ -82,13 +82,13 @@ export const sidebarMenus: SidebarMenu[] = [
     label: "Pengumuman",
     href: "/announcements",
     icon: Megaphone,
-    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM", "BK", "HEADMASTER"],
+    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM_TEACHER", "BK", "HEADMASTER"],
   },
   {
     label: "Surat Izin",
     href: "/leave-requests",
     icon: UserCheck,
-    roles: ["STUDENT", "HOMEROOM", "ADMIN"],
+    roles: ["STUDENT", "HOMEROOM_TEACHER", "ADMIN"],
   },
   {
     label: "Laporan",
@@ -106,6 +106,6 @@ export const sidebarMenus: SidebarMenu[] = [
     label: "Pengaturan",
     href: "/settings",
     icon: Settings,
-    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM", "BK", "HEADMASTER"],
+    roles: ["ADMIN", "STUDENT", "TEACHER", "HOMEROOM_TEACHER", "BK", "HEADMASTER"],
   },
 ];

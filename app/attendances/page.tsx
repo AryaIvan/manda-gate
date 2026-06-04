@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   CalendarCheck,
   Download,
@@ -14,7 +14,8 @@ import {
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { AttendanceBadge } from "@/components/shared/attendance-badge";
-import { attendances as initialAttendances } from "@/data/attendances";
+import { getAttendances } from "@/services/attendance-service";
+import { useAuthStore } from "@/store/auth-store";
 import { Attendance, AttendanceStatus } from "@/types/attendance";
 
 import { Button } from "@/components/ui/button";
@@ -150,8 +151,10 @@ function getDominantStatus(items: Attendance[]) {
 }
 
 export default function AttendancesPage() {
-  const [attendances, setAttendances] =
-    useState<Attendance[]>(initialAttendances);
+  const { token } = useAuthStore();
+  const [attendances, setAttendances] = useState<Attendance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
 
   const [classFilter, setClassFilter] = useState("Semua");
@@ -167,6 +170,43 @@ export default function AttendancesPage() {
   const [selectedStudentName, setSelectedStudentName] = useState("");
   const [selectedStudentClass, setSelectedStudentClass] = useState("");
   const [form, setForm] = useState<AttendanceForm>(defaultForm);
+
+  useEffect(() => {
+    async function fetchAttendances() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        const response = await getAttendances(token);
+        setAttendances(
+          response.data.map((item) => ({
+            id: item.id,
+            studentName: item.student?.fullName ?? "-",
+            className: item.class?.name ?? "-",
+            subject: item.subject?.name ?? "-",
+            teacher: item.teacher?.fullName ?? "-",
+            date: item.date.slice(0, 10),
+            status: item.status,
+            note: item.note ?? "",
+          })),
+        );
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Gagal memuat data absensi dari backend.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchAttendances();
+  }, [token]);
 
   const filteredAttendances = useMemo(() => {
     return attendances.filter((attendance) => {
@@ -305,9 +345,24 @@ export default function AttendancesPage() {
     setDateFilter("");
   };
 
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex h-64 items-center justify-center text-slate-500">
+          Memuat data absensi dari backend...
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <section className="space-y-6">
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {error}
+          </div>
+        )}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm text-slate-500">

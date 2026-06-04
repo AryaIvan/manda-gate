@@ -36,15 +36,33 @@ export default function SubjectsPage() {
   const [subjectDialogOpen, setSubjectDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (!token) return;
-    setLoading(true);
-    Promise.all([getClasses(token), getSubjects(token)])
-      .then(([classRes, subjectRes]) => {
-        setClasses(classRes.data);
-        setSubjects(subjectRes.data);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    async function fetchSubjectsPageData() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        const [classResponse, subjectResponse] = await Promise.all([
+          getClasses(token),
+          getSubjects(token),
+        ]);
+        setClasses(classResponse.data);
+        setSubjects(subjectResponse.data);
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Gagal memuat data mata pelajaran.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchSubjectsPageData();
   }, [token]);
 
   const filteredClasses = useMemo(() => {
@@ -266,7 +284,7 @@ function ClassSubjectsDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-[min(980px,calc(100vw-32px))] !max-w-none max-h-[90vh] overflow-y-auto rounded-3xl p-6">
+      <DialogContent className="w-[min(980px,calc(100vw-32px))]! max-w-none! max-h-[90vh] overflow-y-auto rounded-3xl p-6">
         <DialogHeader>
           <DialogTitle>Mata Pelajaran — {classNameText}</DialogTitle>
           <DialogDescription>
@@ -349,7 +367,7 @@ function SubjectDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-[min(760px,calc(100vw-32px))] !max-w-none max-h-[90vh] overflow-y-auto rounded-3xl p-6">
+      <DialogContent className="w-[min(760px,calc(100vw-32px))]! max-w-none! max-h-[90vh] overflow-y-auto rounded-3xl p-6">
         <DialogHeader>
           <DialogTitle>Detail Mata Pelajaran</DialogTitle>
           <DialogDescription>

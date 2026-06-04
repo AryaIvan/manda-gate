@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import {
   ArrowRightLeft,
   Eye,
@@ -26,10 +26,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { classes } from "@/data/classes";
-import { mockUsers } from "@/data/users";
-import { students } from "@/data/students";
-import { teachers } from "@/data/teachers";
+import { getSettings, getUsers, SystemSetting, UserAccountItem } from "@/services/setting-service";
+import { useAuthStore } from "@/store/auth-store";
 
 type AccountRole = "Admin" | "Guru" | "Wali Kelas" | "Siswa";
 type AccountStatus = "Aktif" | "Nonaktif" | "Belum Dibuat";
@@ -91,66 +89,77 @@ const restrictedStudentAccess = [
   "Mengelola akun user lain",
 ];
 
-const manualAccounts: Account[] = [
-  ...mockUsers
-    .filter((user) => user.role === "ADMIN")
-    .map((user) => ({
-      id: `admin-${user.id}`,
-      name: user.name,
-      identity: "ADM-001",
-      email: user.email,
-      username: user.email.split("@")[0],
-      className: "-",
-      role: "Admin" as AccountRole,
-      status: "Aktif" as AccountStatus,
-      createdAt: "2026-05-01",
-      lastLogin: "2026-05-30 07:30",
-    })),
-  ...teachers.slice(0, 4).map((teacher, index) => {
-    const role: AccountRole =
-      teacher.position === "Wali Kelas" ? "Wali Kelas" : "Guru";
+function mapRole(role: UserAccountItem["role"]): AccountRole | null {
+  if (role === "ADMIN") return "Admin";
+  if (role === "TEACHER") return "Guru";
+  if (role === "HOMEROOM_TEACHER") return "Wali Kelas";
+  if (role === "STUDENT") return "Siswa";
+  return null;
+}
 
-    return {
-      id: `teacher-${teacher.id}`,
-      name: teacher.fullName,
-      identity: teacher.nip,
-      email: teacher.email,
-      username: teacher.email.split("@")[0],
-      className: teacher.position === "Wali Kelas" ? "X IPA 1" : "-",
-      role,
-      status: "Aktif" as AccountStatus,
-      createdAt: "2026-05-04",
-      lastLogin: `2026-05-30 0${8 + index}:15`,
-    };
-  }),
-];
-
-const studentAccounts: Account[] = students.map((student, index) => {
-  const hasAccount = index !== 6;
-  const username = student.fullName.toLowerCase().replaceAll(" ", "");
+function mapUserToAccount(user: UserAccountItem): Account | null {
+  const role = mapRole(user.role);
+  if (!role) return null;
 
   return {
-    id: `student-${student.id}`,
-    name: student.fullName,
-    identity: student.nis,
-    email: student.email ?? `${username}@student.manda.sch.id`,
-    username,
-    className: student.className,
-    role: "Siswa",
-    status: hasAccount ? "Aktif" : "Belum Dibuat",
-    createdAt: hasAccount ? "2026-05-10" : "-",
-    lastLogin: hasAccount ? `2026-05-${24 + index} 08:00` : "-",
+    id: user.id,
+    name: user.name,
+    identity: user.username,
+    email: user.email,
+    username: user.username,
+    className: "-",
+    role,
+    status: user.status === "ACTIVE" ? "Aktif" : "Nonaktif",
+    createdAt: user.createdAt.slice(0, 10),
+    lastLogin: user.lastLogin ? user.lastLogin.slice(0, 16).replace("T", " ") : "-",
   };
-});
-
-const accounts: Account[] = [...manualAccounts, ...studentAccounts];
+}
 
 export default function SettingsPage() {
+  const { token } = useAuthStore();
   const [activeRole, setActiveRole] = useState<AccountRole>("Siswa");
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [settings, setSettings] = useState<SystemSetting | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("Semua");
   const [statusFilter, setStatusFilter] = useState("Semua");
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+
+  useEffect(() => {
+    async function fetchSettingsPage() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        const [settingsResponse, usersResponse] = await Promise.all([
+          getSettings(token),
+          getUsers(token),
+        ]);
+        setSettings(settingsResponse.data);
+        setAccounts(
+          usersResponse.data
+            .map(mapUserToAccount)
+            .filter((item): item is Account => Boolean(item)),
+        );
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Gagal memuat pengaturan dari backend.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchSettingsPage();
+  }, [token]);
 
   const filteredAccounts = useMemo(() => {
     const keyword = search.toLowerCase();
@@ -169,20 +178,19 @@ export default function SettingsPage() {
 
       return matchRole && matchSearch && matchClass && matchStatus;
     });
-  }, [activeRole, classFilter, search, statusFilter]);
+  }, [accounts, activeRole, classFilter, search, statusFilter]);
 
   const studentSummary = useMemo(() => {
+    const studentAccounts = accounts.filter((account) => account.role === "Siswa");
     const active = studentAccounts.filter((account) => account.status === "Aktif").length;
-    const missing = studentAccounts.filter(
-      (account) => account.status === "Belum Dibuat",
-    ).length;
+    const missing = studentAccounts.filter((account) => account.status === "Belum Dibuat").length;
 
     return {
       active,
       missing,
       total: studentAccounts.length,
     };
-  }, []);
+  }, [accounts]);
 
   return (
     <DashboardLayout>
@@ -228,6 +236,37 @@ export default function SettingsPage() {
           />
         </div>
 
+        {settings && (
+          <Card className="border-0 shadow-sm">
+            <CardContent className="grid gap-4 p-5 md:grid-cols-3">
+              <SummaryCard
+                icon={<ShieldCheck size={18} />}
+                label="Madrasah"
+                value={settings.schoolName}
+                description="Nama lembaga dari backend."
+              />
+              <SummaryCard
+                icon={<Users size={18} />}
+                label="Tahun Ajaran"
+                value={settings.academicYear}
+                description="Tahun ajaran aktif sistem."
+              />
+              <SummaryCard
+                icon={<Lock size={18} />}
+                label="Semester"
+                value={settings.semester}
+                description="Semester aktif sistem."
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {error}
+          </div>
+        )}
+
         <Card className="border-0 shadow-sm">
           <CardContent className="space-y-4 p-4 md:p-5">
             <div className="flex flex-wrap gap-2">
@@ -270,11 +309,6 @@ export default function SettingsPage() {
                 disabled={activeRole !== "Siswa"}
               >
                 <option value="Semua">Semua Kelas</option>
-                {classes.map((schoolClass) => (
-                  <option key={schoolClass.id} value={schoolClass.name}>
-                    {schoolClass.name}
-                  </option>
-                ))}
               </select>
 
               <select
@@ -337,7 +371,16 @@ export default function SettingsPage() {
                 </thead>
 
                 <tbody>
-                  {filteredAccounts.map((account) => (
+                  {loading ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-5 py-10 text-center text-slate-500"
+                      >
+                        Memuat akun dari backend...
+                      </td>
+                    </tr>
+                  ) : filteredAccounts.map((account) => (
                     <tr key={account.id} className="border-t">
                       <td className="px-5 py-4">
                         <p className="font-bold text-slate-900">

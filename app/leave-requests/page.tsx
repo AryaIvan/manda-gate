@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, Eye, FileText, Filter, Search } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { getLeaveRequests } from "@/services/leave-request-service";
+import { useAuthStore } from "@/store/auth-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,72 +29,6 @@ type LeaveRequest = {
   status: LeaveStatus;
   description: string;
 };
-
-const leaveRequests: LeaveRequest[] = [
-  {
-    id: "izin-001",
-    studentName: "Ahmad Fauzi",
-    className: "X IPA 1",
-    type: "Izin Sakit",
-    date: "2026-05-30",
-    status: "Disetujui",
-    description: "Sakit demam",
-  },
-  {
-    id: "izin-002",
-    studentName: "Ahmad Fauzi",
-    className: "X IPA 1",
-    type: "Izin Keluarga",
-    date: "2026-06-02",
-    status: "Menunggu",
-    description: "Ada acara keluarga",
-  },
-  {
-    id: "izin-003",
-    studentName: "Siti Aminah",
-    className: "X IPA 1",
-    type: "Izin Keluarga",
-    date: "2026-06-03",
-    status: "Menunggu",
-    description: "Mengurus administrasi keluarga",
-  },
-  {
-    id: "izin-004",
-    studentName: "Dimas Pratama",
-    className: "X IPA 1",
-    type: "Izin Sakit",
-    date: "2026-06-04",
-    status: "Disetujui",
-    description: "Kontrol kesehatan",
-  },
-  {
-    id: "izin-005",
-    studentName: "Muhammad Ilham",
-    className: "X IPS 1",
-    type: "Izin Keluarga",
-    date: "2026-05-31",
-    status: "Disetujui",
-    description: "Acara keluarga",
-  },
-  {
-    id: "izin-006",
-    studentName: "Rizky Maulana",
-    className: "X IPS 1",
-    type: "Izin Sakit",
-    date: "2026-06-01",
-    status: "Menunggu",
-    description: "Sakit kepala",
-  },
-  {
-    id: "izin-007",
-    studentName: "Nur Aisyah",
-    className: "XI IPA 1",
-    type: "Izin Lomba",
-    date: "2026-06-02",
-    status: "Disetujui",
-    description: "Mengikuti lomba karya ilmiah",
-  },
-];
 
 function groupByClass(items: LeaveRequest[]) {
   return items.reduce<Record<string, LeaveRequest[]>>((groups, item) => {
@@ -132,6 +68,10 @@ function StatusBadge({ status }: { status: LeaveStatus }) {
 }
 
 export default function LeaveRequestsPage() {
+  const { token } = useAuthStore();
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Semua");
   const [selectedClassName, setSelectedClassName] = useState("");
@@ -140,6 +80,42 @@ export default function LeaveRequestsPage() {
   const [classDialogOpen, setClassDialogOpen] = useState(false);
   const [studentDialogOpen, setStudentDialogOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+
+  useEffect(() => {
+    async function fetchLeaveRequests() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        const response = await getLeaveRequests(token);
+        setLeaveRequests(
+          response.data.map((item) => ({
+            id: item.id,
+            studentName: item.student?.fullName ?? "-",
+            className: item.class?.name ?? "-",
+            type: item.type,
+            date: item.date.slice(0, 10),
+            status: item.status,
+            description: item.description,
+          })),
+        );
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Gagal memuat surat izin dari backend.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchLeaveRequests();
+  }, [token]);
 
   const filteredRequests = useMemo(() => {
     const keyword = search.toLowerCase();
@@ -156,7 +132,7 @@ export default function LeaveRequestsPage() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [search, statusFilter]);
+  }, [leaveRequests, search, statusFilter]);
 
   const groupedClasses = groupByClass(filteredRequests);
   const classNames = Object.keys(groupedClasses);
@@ -248,8 +224,19 @@ export default function LeaveRequestsPage() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {classNames.map((className) => {
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="rounded-3xl border bg-white p-10 text-center text-slate-500">
+            Memuat surat izin dari backend...
+          </div>
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {classNames.map((className) => {
             const classRequests = groupedClasses[className];
             const studentCount = Object.keys(groupByStudent(classRequests)).length;
 
@@ -295,8 +282,9 @@ export default function LeaveRequestsPage() {
                 </div>
               </button>
             );
-          })}
-        </div>
+            })}
+          </div>
+        )}
 
         <ClassLeaveDialog
           open={classDialogOpen}

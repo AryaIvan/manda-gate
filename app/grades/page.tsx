@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Download,
@@ -15,7 +15,8 @@ import {
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { GradeBadge } from "@/components/shared/grade-badge";
-import { grades as initialGrades } from "@/data/grades";
+import { getGrades } from "@/services/grade-service";
+import { useAuthStore } from "@/store/auth-store";
 import { Grade } from "@/types/grade";
 
 import { Button } from "@/components/ui/button";
@@ -159,7 +160,10 @@ function groupGradesByStudent(grades: Grade[]) {
 }
 
 export default function GradesPage() {
-  const [grades, setGrades] = useState<Grade[]>(initialGrades);
+  const { token } = useAuthStore();
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
 
   const [classFilter, setClassFilter] = useState("Semua");
@@ -176,6 +180,47 @@ export default function GradesPage() {
   const [studentDetailOpen, setStudentDetailOpen] = useState(false);
 
   const [form, setForm] = useState<GradeForm>(defaultForm);
+
+  useEffect(() => {
+    async function fetchGrades() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        const response = await getGrades(token);
+        setGrades(
+          response.data.map((item) => ({
+            id: item.id,
+            studentName: item.student?.fullName ?? "-",
+            className: item.class?.name ?? "-",
+            subject: item.subject?.name ?? "-",
+            teacher: item.teacher?.fullName ?? "-",
+            assignmentScore: item.assignmentScore,
+            dailyScore: item.dailyScore,
+            midtermScore: item.midtermScore,
+            finalExamScore: item.finalExamScore,
+            finalScore: item.finalScore,
+            predicate: item.predicate,
+            note: item.note ?? "",
+          })),
+        );
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Gagal memuat data nilai dari backend.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchGrades();
+  }, [token]);
 
   const filteredGrades = useMemo(() => {
     return grades.filter((grade) => {
@@ -325,9 +370,24 @@ export default function GradesPage() {
     setPredicateFilter("Semua");
   };
 
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex h-64 items-center justify-center text-slate-500">
+          Memuat data nilai dari backend...
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <section className="space-y-6">
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {error}
+          </div>
+        )}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm text-slate-500">

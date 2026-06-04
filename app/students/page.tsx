@@ -136,7 +136,7 @@ export default function StudentsPage() {
         student.fullName.toLowerCase().includes(keyword) ||
         student.nis.toLowerCase().includes(keyword) ||
         student.nisn.toLowerCase().includes(keyword) ||
-        student.className.toLowerCase().includes(keyword)
+        (student.className ?? "").toLowerCase().includes(keyword)
       );
     });
   }, [search, students]);
@@ -432,7 +432,7 @@ function StudentFormDialog({
 }: StudentFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-[min(920px,calc(100vw-32px))] !max-w-none max-h-[90vh] overflow-y-auto rounded-3xl p-6">
+      <DialogContent className="w-[min(920px,calc(100vw-32px))]! max-w-none! max-h-[90vh] overflow-y-auto rounded-3xl p-6">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -682,7 +682,7 @@ function StudentDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-[min(760px,calc(100vw-32px))] !max-w-none max-h-[90vh] overflow-y-auto rounded-3xl p-6">
+      <DialogContent className="w-[min(760px,calc(100vw-32px))]! max-w-none! max-h-[90vh] overflow-y-auto rounded-3xl p-6">
         <DialogHeader>
           <DialogTitle>Detail Siswa</DialogTitle>
           <DialogDescription>

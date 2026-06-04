@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   Clock,
@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { schedules as initialSchedules } from "@/data/schedules";
+import { getSchedules } from "@/services/schedule-service";
+import { useAuthStore } from "@/store/auth-store";
 import { Schedule } from "@/types/schedule";
 
 import { Button } from "@/components/ui/button";
@@ -96,7 +97,10 @@ function sortSchedules(schedules: Schedule[]) {
 }
 
 export default function SchedulesPage() {
-  const [schedules, setSchedules] = useState<Schedule[]>(initialSchedules);
+  const { token } = useAuthStore();
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
 
   const [dayFilter, setDayFilter] = useState("Semua");
@@ -111,6 +115,46 @@ export default function SchedulesPage() {
     null
   );
   const [form, setForm] = useState<ScheduleForm>(defaultForm);
+
+  useEffect(() => {
+    async function fetchSchedules() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        const response = await getSchedules(token);
+        setSchedules(
+          response.data.map((item) => ({
+            id: item.id,
+            day: item.day as Schedule["day"],
+            startTime: item.startTime,
+            endTime: item.endTime,
+            subject: item.subject?.name ?? "-",
+            teacher: item.teacher?.fullName ?? "-",
+            className: item.class?.name ?? "-",
+            room: item.room,
+            semester: item.semester as Schedule["semester"],
+            academicYear: item.academicYear,
+            isActive: item.status === "ACTIVE",
+          })),
+        );
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Gagal memuat data jadwal dari backend.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchSchedules();
+  }, [token]);
 
   const filteredSchedules = useMemo(() => {
     return schedules.filter((schedule) => {
@@ -254,9 +298,24 @@ export default function SchedulesPage() {
     setSemesterFilter("Semua");
   };
 
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex h-64 items-center justify-center text-slate-500">
+          Memuat data jadwal dari backend...
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <section className="space-y-6">
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {error}
+          </div>
+        )}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm text-slate-500">

@@ -9,7 +9,7 @@ export const roles = [
   },
   {
     label: "Wali Kelas",
-    value: "HOMEROOM",
+    value: "HOMEROOM_TEACHER",
   },
   {
     label: "BK / Kesiswaan",
