@@ -1,13 +1,26 @@
 import { create } from "zustand";
-import { User } from "@/types/auth";
+
+type UserRole = "ADMIN" | "TEACHER" | "HOMEROOM_TEACHER" | "STUDENT";
+type AccountStatus = "ACTIVE" | "INACTIVE";
+
+export type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  status: AccountStatus;
+};
 
 type AuthState = {
-  user: User | null;
+  user: AuthUser | null;
   token: string | null;
   isAuthenticated: boolean;
-  login: (user: User, token: string) => void;
+
+  setAuth: (user: AuthUser, token: string) => void;
+  login: (user: AuthUser, token: string) => void;
   logout: () => void;
-  loadUser: () => void;
+  loadAuth: () => void;
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -15,9 +28,20 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: null,
   isAuthenticated: false,
 
-  login: (user, token) => {
-    localStorage.setItem("manda_user", JSON.stringify(user));
+  setAuth: (user, token) => {
     localStorage.setItem("manda_token", token);
+    localStorage.setItem("manda_user", JSON.stringify(user));
+
+    set({
+      user,
+      token,
+      isAuthenticated: true,
+    });
+  },
+
+  login: (user, token) => {
+    localStorage.setItem("manda_token", token);
+    localStorage.setItem("manda_user", JSON.stringify(user));
 
     set({
       user,
@@ -27,8 +51,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    localStorage.removeItem("manda_user");
     localStorage.removeItem("manda_token");
+    localStorage.removeItem("manda_user");
 
     set({
       user: null,
@@ -37,14 +61,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     });
   },
 
-  loadUser: () => {
-    const savedUser = localStorage.getItem("manda_user");
-    const savedToken = localStorage.getItem("manda_token");
+  loadAuth: () => {
+    const token = localStorage.getItem("manda_token");
+    const user = localStorage.getItem("manda_user");
 
-    if (savedUser && savedToken) {
+    if (token && user) {
       set({
-        user: JSON.parse(savedUser),
-        token: savedToken,
+        token,
+        user: JSON.parse(user),
         isAuthenticated: true,
       });
     }

@@ -1,12 +1,18 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { students as initialStudents } from "@/data/students";
-import { Student } from "@/types/student";
+import { useAuthStore } from "@/store/auth-store";
+import {
+  StudentItem as Student,
+  getStudents,
+  createStudent,
+  updateStudent,
+  deleteStudent,
+} from "@/services/student-service";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,21 +76,49 @@ function studentToForm(student: Student): StudentForm {
     nis: student.nis,
     nisn: student.nisn,
     fullName: student.fullName,
-    gender: student.gender,
+    gender: (student.gender === "MALE" ? "Laki-laki" : student.gender === "FEMALE" ? "Perempuan" : student.gender) as StudentForm["gender"],
     birthPlace: student.birthPlace || "",
     birthDate: student.birthDate || "",
     address: student.address || "",
     phone: student.phone || "",
     email: student.email || "",
-    className: student.className,
-    major: student.major,
-    admissionYear: String(student.admissionYear),
-    status: student.status,
+    className: student.class?.name || student.className || "X IPA 1",
+    major: student.class?.major || student.major || "IPA",
+    admissionYear: String(student.admissionYear || ""),
+    status: student.status as StudentForm["status"],
   };
 }
 
 export default function StudentsPage() {
-  const [students, setStudents] = useState<Student[]>(initialStudents);
+  const { token } = useAuthStore();
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchStudents() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await getStudents(token);
+        setStudents(response.data);
+      } catch (error) {
+        setError(
+          error instanceof Error ? error.message : "Gagal memuat data siswa.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchStudents();
+  }, [token]);
+
   const [search, setSearch] = useState("");
 
   const [addOpen, setAddOpen] = useState(false);
@@ -123,66 +157,58 @@ export default function StudentsPage() {
     return true;
   };
 
-  const handleAddSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!validateForm() || !token) return;
 
-    if (!validateForm()) return;
-
-    const newStudent: Student = {
-      id: Date.now().toString(),
-      nis: form.nis,
-      nisn: form.nisn,
-      fullName: form.fullName,
-      gender: form.gender,
-      birthPlace: form.birthPlace,
-      birthDate: form.birthDate,
-      address: form.address,
-      phone: form.phone,
-      email: form.email,
-      className: form.className,
-      major: form.major,
-      admissionYear: Number(form.admissionYear),
-      status: form.status,
-      photo: "",
-    };
-
-    setStudents((previous) => [newStudent, ...previous]);
-    setForm(defaultForm);
-    setAddOpen(false);
+    try {
+      const res = await createStudent(token, {
+        nis: form.nis,
+        nisn: form.nisn,
+        fullName: form.fullName,
+        gender: form.gender,
+        birthPlace: form.birthPlace,
+        birthDate: form.birthDate,
+        address: form.address,
+        phone: form.phone,
+        email: form.email,
+        status: form.status,
+      });
+      setStudents((prev) => [res.data, ...prev]);
+      setForm(defaultForm);
+      setAddOpen(false);
+    } catch (err: unknown) {
+      alert((err as Error).message || "Gagal menambah data siswa.");
+    }
   };
 
-  const handleEditSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (!selectedStudent) return;
+    if (!selectedStudent || !token) return;
     if (!validateForm()) return;
 
-    const updatedStudent: Student = {
-      ...selectedStudent,
-      nis: form.nis,
-      nisn: form.nisn,
-      fullName: form.fullName,
-      gender: form.gender,
-      birthPlace: form.birthPlace,
-      birthDate: form.birthDate,
-      address: form.address,
-      phone: form.phone,
-      email: form.email,
-      className: form.className,
-      major: form.major,
-      admissionYear: Number(form.admissionYear),
-      status: form.status,
-    };
-
-    setStudents((previous) =>
-      previous.map((student) =>
-        student.id === selectedStudent.id ? updatedStudent : student
-      )
-    );
-
-    setSelectedStudent(null);
-    setForm(defaultForm);
-    setEditOpen(false);
+    try {
+      const res = await updateStudent(token, selectedStudent.id, {
+        nis: form.nis,
+        nisn: form.nisn,
+        fullName: form.fullName,
+        gender: form.gender,
+        birthPlace: form.birthPlace,
+        birthDate: form.birthDate,
+        address: form.address,
+        phone: form.phone,
+        email: form.email,
+        status: form.status,
+      });
+      setStudents((prev) =>
+        prev.map((s) => (s.id === selectedStudent.id ? res.data : s))
+      );
+      setSelectedStudent(null);
+      setForm(defaultForm);
+      setEditOpen(false);
+    } catch (err: unknown) {
+      alert((err as Error).message || "Gagal memperbarui data siswa.");
+    }
   };
 
   const handleDetail = (student: Student) => {
@@ -196,13 +222,37 @@ export default function StudentsPage() {
     setEditOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const confirmed = confirm("Yakin ingin menghapus data siswa ini?");
+    if (!confirmed || !token) return;
 
-    if (!confirmed) return;
-
-    setStudents((previous) => previous.filter((student) => student.id !== id));
+    try {
+      await deleteStudent(token, id);
+      setStudents((prev) => prev.filter((s) => s.id !== id));
+    } catch (err: unknown) {
+      alert((err as Error).message || "Gagal menghapus data siswa.");
+    }
   };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex h-64 items-center justify-center text-slate-500">
+          Memuat data siswa...
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="flex h-64 items-center justify-center text-red-500">
+          Gagal memuat data: {error}
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -275,8 +325,8 @@ export default function StudentsPage() {
                       <TableCell>{student.nisn}</TableCell>
                       <TableCell>{student.fullName}</TableCell>
                       <TableCell>{student.gender}</TableCell>
-                      <TableCell>{student.className}</TableCell>
-                      <TableCell>{student.major}</TableCell>
+                      <TableCell>{student.class?.name || student.className || "-"}</TableCell>
+                      <TableCell>{student.class?.major || student.major || "-"}</TableCell>
                       <TableCell>
                         <StatusBadge status={student.status} />
                       </TableCell>

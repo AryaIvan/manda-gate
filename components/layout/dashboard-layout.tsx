@@ -13,37 +13,43 @@ type DashboardLayoutProps = {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
-  const { user, loadUser } = useAuthStore();
+
+  const { user, isAuthenticated, loadAuth } = useAuthStore();
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    loadUser();
-  }, [loadUser]);
+    loadAuth();
+    queueMicrotask(() => setMounted(true));
+  }, [loadAuth]);
 
   useEffect(() => {
     const token = localStorage.getItem("manda_token");
 
-    if (!token) {
+    if (mounted && !token && !isAuthenticated) {
       router.push("/login");
     }
-  }, [router]);
+  }, [mounted, isAuthenticated, router]);
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50">
       <Sidebar
         role={user?.role}
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
       />
 
-      <div className="flex-1 min-w-0">
+      <div className="min-h-screen min-w-0 bg-slate-50 md:ml-[280px]">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
-        <main className="min-h-screen flex-1 bg-slate-50 md:ml-[280px]">
-  <div className="px-4 py-5 sm:px-6 lg:px-8">
-    {children}
-  </div>
-</main>
+        <main className="min-h-screen bg-slate-50">
+          <div className="px-4 py-5 sm:px-6 lg:px-8">{children}</div>
+        </main>
       </div>
     </div>
   );

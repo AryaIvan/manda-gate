@@ -1,12 +1,18 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { teachers as initialTeachers } from "@/data/teachers";
-import { Teacher } from "@/types/teacher";
+import { useAuthStore } from "@/store/auth-store";
+import {
+  TeacherItem as Teacher,
+  getTeachers,
+  createTeacher,
+  updateTeacher,
+  deleteTeacher,
+} from "@/services/teacher-service";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,20 +65,48 @@ const defaultForm: TeacherForm = {
 
 function teacherToForm(teacher: Teacher): TeacherForm {
   return {
-    nip: teacher.nip,
+    nip: teacher.nip || "",
     fullName: teacher.fullName,
-    gender: teacher.gender,
+    gender: teacher.gender as TeacherForm["gender"],
     email: teacher.email,
     phone: teacher.phone || "",
     address: teacher.address || "",
-    subject: teacher.subject,
-    position: teacher.position,
-    status: teacher.status,
+    subject: teacher.subject || "Matematika",
+    position: teacher.position || "Guru Mata Pelajaran",
+    status: teacher.status as TeacherForm["status"],
   };
 }
 
 export default function TeachersPage() {
-  const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers);
+  const { token } = useAuthStore();
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchTeachers() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await getTeachers(token);
+        setTeachers(response.data);
+      } catch (error) {
+        setError(
+          error instanceof Error ? error.message : "Gagal memuat data guru.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchTeachers();
+  }, [token]);
+
   const [search, setSearch] = useState("");
 
   const [addOpen, setAddOpen] = useState(false);
@@ -112,58 +146,56 @@ export default function TeachersPage() {
     return true;
   };
 
-  const handleAddSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!validateForm() || !token) return;
 
-    if (!validateForm()) return;
-
-    const newTeacher: Teacher = {
-      id: Date.now().toString(),
-      nip: form.nip,
-      fullName: form.fullName,
-      gender: form.gender,
-      email: form.email,
-      phone: form.phone,
-      address: form.address,
-      subject: form.subject,
-      position: form.position,
-      status: form.status,
-      photo: "",
-    };
-
-    setTeachers((previous) => [newTeacher, ...previous]);
-    setForm(defaultForm);
-    setAddOpen(false);
+    try {
+      const res = await createTeacher(token, {
+        nip: form.nip,
+        fullName: form.fullName,
+        gender: form.gender,
+        email: form.email,
+        phone: form.phone,
+        address: form.address,
+        subject: form.subject,
+        position: form.position,
+        status: form.status,
+      });
+      setTeachers((prev) => [res.data, ...prev]);
+      setForm(defaultForm);
+      setAddOpen(false);
+    } catch (err: unknown) {
+      alert((err as Error).message || "Gagal menambah data guru.");
+    }
   };
 
-  const handleEditSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (!selectedTeacher) return;
+    if (!selectedTeacher || !token) return;
     if (!validateForm()) return;
 
-    const updatedTeacher: Teacher = {
-      ...selectedTeacher,
-      nip: form.nip,
-      fullName: form.fullName,
-      gender: form.gender,
-      email: form.email,
-      phone: form.phone,
-      address: form.address,
-      subject: form.subject,
-      position: form.position,
-      status: form.status,
-    };
-
-    setTeachers((previous) =>
-      previous.map((teacher) =>
-        teacher.id === selectedTeacher.id ? updatedTeacher : teacher
-      )
-    );
-
-    setSelectedTeacher(null);
-    setForm(defaultForm);
-    setEditOpen(false);
+    try {
+      const res = await updateTeacher(token, selectedTeacher.id, {
+        nip: form.nip,
+        fullName: form.fullName,
+        gender: form.gender,
+        email: form.email,
+        phone: form.phone,
+        address: form.address,
+        subject: form.subject,
+        position: form.position,
+        status: form.status,
+      });
+      setTeachers((prev) =>
+        prev.map((t) => (t.id === selectedTeacher.id ? res.data : t))
+      );
+      setSelectedTeacher(null);
+      setForm(defaultForm);
+      setEditOpen(false);
+    } catch (err: unknown) {
+      alert((err as Error).message || "Gagal memperbarui data guru.");
+    }
   };
 
   const handleDetail = (teacher: Teacher) => {
@@ -177,13 +209,37 @@ export default function TeachersPage() {
     setEditOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const confirmed = confirm("Yakin ingin menghapus data guru ini?");
+    if (!confirmed || !token) return;
 
-    if (!confirmed) return;
-
-    setTeachers((previous) => previous.filter((teacher) => teacher.id !== id));
+    try {
+      await deleteTeacher(token, id);
+      setTeachers((prev) => prev.filter((t) => t.id !== id));
+    } catch (err: unknown) {
+      alert((err as Error).message || "Gagal menghapus data guru.");
+    }
   };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex h-64 items-center justify-center text-slate-500">
+          Memuat data guru...
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="flex h-64 items-center justify-center text-red-500">
+          Gagal memuat data: {error}
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
