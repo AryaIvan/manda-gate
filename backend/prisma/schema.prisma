@@ -1,10 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = env("TURSO_DATABASE_URL")
 }
 
 enum UserRole {
@@ -205,7 +206,7 @@ model Attendance {
   classId   String
   subjectId String
   teacherId String?
-  date      DateTime         @db.Date
+  date      DateTime
   status    AttendanceStatus
   note      String?
   createdAt DateTime         @default(now())
@@ -244,7 +245,7 @@ model Grade {
 model Announcement {
   id          String        @id @default(cuid())
   title       String
-  content     String        @db.Text
+  content     String
   category    String
   targetRole  String
   publishDate DateTime      @default(now())
@@ -262,9 +263,9 @@ model LeaveRequest {
   studentId   String
   classId     String
   type        String
-  date        DateTime    @db.Date
+  date        DateTime
   status      LeaveStatus @default(Menunggu)
-  description String      @db.Text
+  description String
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   student     Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -280,7 +281,7 @@ model Achievement {
   classId   String
   title     String
   level     String
-  date      DateTime @db.Date
+  date      DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
