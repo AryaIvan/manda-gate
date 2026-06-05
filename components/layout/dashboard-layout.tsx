@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { canAccessPath, getDefaultPath } from "@/lib/role-access";
 import { useAuthStore } from "@/store/auth-store";
 
 type DashboardLayoutProps = {
@@ -13,6 +14,7 @@ type DashboardLayoutProps = {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const { user, isAuthenticated, loadAuth } = useAuthStore();
 
@@ -32,7 +34,19 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }, [mounted, isAuthenticated, router]);
 
+  useEffect(() => {
+    if (!mounted || !user) return;
+
+    if (!canAccessPath(user.role, pathname)) {
+      router.replace(getDefaultPath(user.role));
+    }
+  }, [mounted, pathname, router, user]);
+
   if (!mounted) {
+    return null;
+  }
+
+  if (user && !canAccessPath(user.role, pathname)) {
     return null;
   }
 

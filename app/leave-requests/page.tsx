@@ -1,10 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Eye, FileText, Filter, Search } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CalendarDays,
+  CheckCircle2,
+  Eye,
+  FileText,
+  Filter,
+  Pencil,
+  Search,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { getLeaveRequests } from "@/services/leave-request-service";
+import {
+  approveLeaveRequest,
+  deleteLeaveRequest,
+  getLeaveRequests,
+  rejectLeaveRequest,
+  updateLeaveRequest,
+} from "@/services/leave-request-service";
 import { useAuthStore } from "@/store/auth-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 
 type LeaveStatus = "Menunggu" | "Disetujui" | "Ditolak";
+type Role = "ADMIN" | "TEACHER" | "HOMEROOM_TEACHER" | "STUDENT" | "BK" | "HEADMASTER";
 
 type LeaveRequest = {
   id: string;
@@ -29,6 +46,22 @@ type LeaveRequest = {
   status: LeaveStatus;
   description: string;
 };
+
+type LeaveForm = {
+  type: string;
+  date: string;
+  status: LeaveStatus;
+  description: string;
+};
+
+function toLeaveForm(request: LeaveRequest): LeaveForm {
+  return {
+    type: request.type,
+    date: request.date,
+    status: request.status,
+    description: request.description,
+  };
+}
 
 function groupByClass(items: LeaveRequest[]) {
   return items.reduce<Record<string, LeaveRequest[]>>((groups, item) => {
@@ -68,28 +101,38 @@ function StatusBadge({ status }: { status: LeaveStatus }) {
 }
 
 export default function LeaveRequestsPage() {
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Semua");
   const [selectedClassName, setSelectedClassName] = useState("");
   const [selectedStudentName, setSelectedStudentName] = useState("");
   const [selectedLeave, setSelectedLeave] = useState<LeaveRequest | null>(null);
+  const [editingLeave, setEditingLeave] = useState<LeaveRequest | null>(null);
+  const [leaveForm, setLeaveForm] = useState<LeaveForm>({
+    type: "",
+    date: "",
+    status: "Menunggu",
+    description: "",
+  });
   const [classDialogOpen, setClassDialogOpen] = useState(false);
   const [studentDialogOpen, setStudentDialogOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    async function fetchLeaveRequests() {
+  const refreshLeaveRequests = useCallback(
+    async (showLoading = false) => {
       if (!token) {
         setLoading(false);
         return;
       }
 
       try {
-        setLoading(true);
+        if (showLoading) setLoading(true);
         setError("");
         const response = await getLeaveRequests(token);
         setLeaveRequests(
@@ -112,10 +155,17 @@ export default function LeaveRequestsPage() {
       } finally {
         setLoading(false);
       }
-    }
+    },
+    [token],
+  );
 
-    fetchLeaveRequests();
-  }, [token]);
+  useEffect(() => {
+    const refreshId = window.setTimeout(() => {
+      refreshLeaveRequests(true);
+    }, 0);
+
+    return () => window.clearTimeout(refreshId);
+  }, [refreshLeaveRequests]);
 
   const filteredRequests = useMemo(() => {
     const keyword = search.toLowerCase();
@@ -162,6 +212,105 @@ export default function LeaveRequestsPage() {
   const openLeave = (leave: LeaveRequest) => {
     setSelectedLeave(leave);
     setLeaveDialogOpen(true);
+  };
+
+  const openEditLeave = (leave: LeaveRequest) => {
+    setEditingLeave(leave);
+    setLeaveForm(toLeaveForm(leave));
+    setLeaveDialogOpen(false);
+    setEditDialogOpen(true);
+    setActionError("");
+  };
+
+  const syncSelectedLeave = (updated: LeaveRequest) => {
+    setSelectedLeave(updated);
+    setLeaveRequests((items) =>
+      items.map((item) => (item.id === updated.id ? updated : item)),
+    );
+  };
+
+  const handleApproveLeave = async (request: LeaveRequest) => {
+    if (!token) return;
+
+    try {
+      setActionError("");
+      const response = await approveLeaveRequest(token, request.id);
+      syncSelectedLeave({
+        ...request,
+        status: response.data.status,
+      });
+      await refreshLeaveRequests();
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Gagal menyetujui surat izin.",
+      );
+    }
+  };
+
+  const handleRejectLeave = async (request: LeaveRequest) => {
+    if (!token) return;
+
+    try {
+      setActionError("");
+      const response = await rejectLeaveRequest(token, request.id);
+      syncSelectedLeave({
+        ...request,
+        status: response.data.status,
+      });
+      await refreshLeaveRequests();
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Gagal menolak surat izin.",
+      );
+    }
+  };
+
+  const handleDeleteLeave = async (request: LeaveRequest) => {
+    if (!token) return;
+    const confirmed = confirm(`Hapus surat izin ${request.type} milik ${request.studentName}?`);
+    if (!confirmed) return;
+
+    try {
+      setActionError("");
+      await deleteLeaveRequest(token, request.id);
+      setLeaveRequests((items) => items.filter((item) => item.id !== request.id));
+      setLeaveDialogOpen(false);
+      setSelectedLeave(null);
+      await refreshLeaveRequests();
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Gagal menghapus surat izin.",
+      );
+    }
+  };
+
+  const handleSubmitEditLeave = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token || !editingLeave) return;
+
+    try {
+      setSubmitting(true);
+      setActionError("");
+      const response = await updateLeaveRequest(token, editingLeave.id, leaveForm);
+      const updatedLeave: LeaveRequest = {
+        ...editingLeave,
+        type: response.data.type,
+        date: response.data.date.slice(0, 10),
+        status: response.data.status,
+        description: response.data.description,
+      };
+
+      syncSelectedLeave(updatedLeave);
+      setEditingLeave(null);
+      setEditDialogOpen(false);
+      await refreshLeaveRequests();
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Gagal memperbarui surat izin.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const resetFilter = () => {
@@ -227,6 +376,12 @@ export default function LeaveRequestsPage() {
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
             {error}
+          </div>
+        )}
+
+        {actionError && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {actionError}
           </div>
         )}
 
@@ -307,6 +462,23 @@ export default function LeaveRequestsPage() {
           open={leaveDialogOpen}
           onOpenChange={setLeaveDialogOpen}
           request={selectedLeave}
+          role={user?.role}
+          onApprove={handleApproveLeave}
+          onReject={handleRejectLeave}
+          onEdit={openEditLeave}
+          onDelete={handleDeleteLeave}
+        />
+
+        <LeaveEditDialog
+          open={editDialogOpen}
+          onOpenChange={(open) => {
+            setEditDialogOpen(open);
+            if (!open) setEditingLeave(null);
+          }}
+          form={leaveForm}
+          setForm={setLeaveForm}
+          submitting={submitting}
+          onSubmit={handleSubmitEditLeave}
         />
       </section>
     </DashboardLayout>
@@ -462,12 +634,27 @@ function LeaveDetailDialog({
   open,
   onOpenChange,
   request,
+  role,
+  onApprove,
+  onReject,
+  onEdit,
+  onDelete,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   request: LeaveRequest | null;
+  role?: Role;
+  onApprove: (request: LeaveRequest) => void;
+  onReject: (request: LeaveRequest) => void;
+  onEdit: (request: LeaveRequest) => void;
+  onDelete: (request: LeaveRequest) => void;
 }) {
   if (!request) return null;
+
+  const canApproveReject =
+    role === "ADMIN" || role === "HOMEROOM_TEACHER" || role === "BK";
+  const canEdit = role === "ADMIN" || role === "HOMEROOM_TEACHER";
+  const canDelete = role === "ADMIN" || role === "STUDENT";
 
   const details = [
     { label: "Nama Siswa", value: request.studentName },
@@ -514,12 +701,149 @@ function LeaveDetailDialog({
             ))}
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            {canApproveReject && request.status === "Menunggu" && (
+              <>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => onApprove(request)}
+                >
+                  <CheckCircle2 size={16} className="mr-2" />
+                  Setujui
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-700"
+                  onClick={() => onReject(request)}
+                >
+                  <XCircle size={16} className="mr-2" />
+                  Tolak
+                </Button>
+              </>
+            )}
+            {canEdit && (
+              <Button variant="outline" onClick={() => onEdit(request)}>
+                <Pencil size={16} className="mr-2" />
+                Edit
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="outline"
+                className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-700"
+                onClick={() => onDelete(request)}
+              >
+                <Trash2 size={16} className="mr-2" />
+                Hapus
+              </Button>
+            )}
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Tutup
             </Button>
           </div>
         </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function LeaveEditDialog({
+  open,
+  onOpenChange,
+  form,
+  setForm,
+  submitting,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  form: LeaveForm;
+  setForm: (form: LeaveForm) => void;
+  submitting: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!w-[min(760px,calc(100vw-32px))] !max-w-none max-h-[90vh] overflow-y-auto rounded-3xl p-6">
+        <DialogHeader>
+          <DialogTitle>Edit Surat Izin</DialogTitle>
+          <DialogDescription>
+            Perbarui jenis, tanggal, status, dan keterangan surat izin.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Jenis Surat
+              <Input
+                value={form.type}
+                onChange={(event) =>
+                  setForm({ ...form, type: event.target.value })
+                }
+                required
+              />
+            </label>
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Tanggal
+              <Input
+                type="date"
+                value={form.date}
+                onChange={(event) =>
+                  setForm({ ...form, date: event.target.value })
+                }
+                required
+              />
+            </label>
+          </div>
+
+          <label className="space-y-2 text-sm font-semibold text-slate-700">
+            Status
+            <select
+              className="h-11 w-full rounded-2xl border bg-white px-4 text-sm text-slate-700"
+              value={form.status}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  status: event.target.value as LeaveStatus,
+                })
+              }
+            >
+              <option value="Menunggu">Menunggu</option>
+              <option value="Disetujui">Disetujui</option>
+              <option value="Ditolak">Ditolak</option>
+            </select>
+          </label>
+
+          <label className="space-y-2 text-sm font-semibold text-slate-700">
+            Keterangan
+            <textarea
+              className="min-h-28 w-full resize-none rounded-2xl border bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-emerald-400"
+              value={form.description}
+              onChange={(event) =>
+                setForm({ ...form, description: event.target.value })
+              }
+              required
+            />
+          </label>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="submit"
+              className="bg-emerald-600 hover:bg-emerald-700"
+              disabled={submitting}
+            >
+              {submitting ? "Menyimpan..." : "Simpan Perubahan"}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

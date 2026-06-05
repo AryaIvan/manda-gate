@@ -1,5 +1,9 @@
 export type Grade = {
   id: string;
+  studentId?: string;
+  classId?: string;
+  subjectId?: string;
+  teacherId?: string | null;
   studentName: string;
   className: string;
   subject: string;

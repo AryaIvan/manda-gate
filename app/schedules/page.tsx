@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   Clock,
@@ -15,7 +15,15 @@ import {
 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { getSchedules } from "@/services/schedule-service";
+import {
+  createSchedule,
+  deleteSchedule,
+  getSchedules,
+  updateSchedule,
+} from "@/services/schedule-service";
+import { ClassItem, getClasses } from "@/services/class-service";
+import { getSubjects, SubjectItem } from "@/services/subject-service";
+import { getTeachers, TeacherItem } from "@/services/teacher-service";
 import { useAuthStore } from "@/store/auth-store";
 import { Schedule } from "@/types/schedule";
 
@@ -73,6 +81,22 @@ function scheduleToForm(schedule: Schedule): ScheduleForm {
   };
 }
 
+function mapScheduleItem(item: Awaited<ReturnType<typeof getSchedules>>["data"][number]): Schedule {
+  return {
+    id: item.id,
+    day: item.day as Schedule["day"],
+    startTime: item.startTime,
+    endTime: item.endTime,
+    subject: item.subject?.name ?? "-",
+    teacher: item.teacher?.fullName ?? "-",
+    className: item.class?.name ?? "-",
+    room: item.room,
+    semester: item.semester as Schedule["semester"],
+    academicYear: item.academicYear,
+    isActive: item.status === "ACTIVE",
+  };
+}
+
 function groupSchedulesByClass(schedules: Schedule[]) {
   return schedules.reduce<Record<string, Schedule[]>>((groups, schedule) => {
     if (!groups[schedule.className]) {
@@ -99,6 +123,9 @@ function sortSchedules(schedules: Schedule[]) {
 export default function SchedulesPage() {
   const { token } = useAuthStore();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [teachers, setTeachers] = useState<TeacherItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -116,8 +143,30 @@ export default function SchedulesPage() {
   );
   const [form, setForm] = useState<ScheduleForm>(defaultForm);
 
+  const refreshSchedules = useCallback(async (showLoading = false) => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (showLoading) setLoading(true);
+      setError("");
+      const response = await getSchedules(token);
+      setSchedules(response.data.map(mapScheduleItem));
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Gagal memuat data jadwal dari backend.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
-    async function fetchSchedules() {
+    async function fetchPageData() {
       if (!token) {
         setLoading(false);
         return;
@@ -126,35 +175,29 @@ export default function SchedulesPage() {
       try {
         setLoading(true);
         setError("");
-        const response = await getSchedules(token);
-        setSchedules(
-          response.data.map((item) => ({
-            id: item.id,
-            day: item.day as Schedule["day"],
-            startTime: item.startTime,
-            endTime: item.endTime,
-            subject: item.subject?.name ?? "-",
-            teacher: item.teacher?.fullName ?? "-",
-            className: item.class?.name ?? "-",
-            room: item.room,
-            semester: item.semester as Schedule["semester"],
-            academicYear: item.academicYear,
-            isActive: item.status === "ACTIVE",
-          })),
-        );
+        const [classResponse, subjectResponse, teacherResponse] =
+          await Promise.all([
+            getClasses(token),
+            getSubjects(token),
+            getTeachers(token),
+          ]);
+        setClasses(classResponse.data);
+        setSubjects(subjectResponse.data);
+        setTeachers(teacherResponse.data);
+        await refreshSchedules(false);
       } catch (error) {
         setError(
           error instanceof Error
             ? error.message
-            : "Gagal memuat data jadwal dari backend.",
+            : "Gagal memuat pilihan jadwal dari backend.",
         );
       } finally {
         setLoading(false);
       }
     }
 
-    fetchSchedules();
-  }, [token]);
+    fetchPageData();
+  }, [refreshSchedules, token]);
 
   const filteredSchedules = useMemo(() => {
     return schedules.filter((schedule) => {
@@ -187,6 +230,20 @@ export default function SchedulesPage() {
 
   const classNames = Object.keys(groupedSchedules);
 
+  const selectedClass = useMemo(() => {
+    return classes.find((item) => item.name === form.className) ?? null;
+  }, [classes, form.className]);
+
+  const selectedSubject = useMemo(() => {
+    return subjects.find((item) => item.name === form.subject) ?? null;
+  }, [subjects, form.subject]);
+
+  const selectedTeacher = useMemo(() => {
+    return teachers.find((item) => item.fullName === form.teacher) ?? null;
+  }, [teachers, form.teacher]);
+
+  const classOptions = classes.length ? classes.map((item) => item.name) : [defaultForm.className];
+
   const handleChange = (field: keyof ScheduleForm, value: string) => {
     setForm((previous) => ({
       ...previous,
@@ -215,59 +272,66 @@ export default function SchedulesPage() {
     return true;
   };
 
-  const handleAddSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!validateForm()) return;
+    if (!validateForm() || !token) return;
+    if (!selectedClass || !selectedSubject) {
+      alert("Pastikan kelas dan mata pelajaran dipilih dari data backend.");
+      return;
+    }
 
-    const newSchedule: Schedule = {
-      id: Date.now().toString(),
-      day: form.day,
-      startTime: form.startTime,
-      endTime: form.endTime,
-      subject: form.subject,
-      teacher: form.teacher,
-      className: form.className,
-      room: form.room,
-      semester: form.semester,
-      academicYear: form.academicYear,
-      isActive: form.isActive === "Aktif",
-    };
-
-    setSchedules((previous) => [newSchedule, ...previous]);
-    setForm(defaultForm);
-    setAddOpen(false);
+    try {
+      await createSchedule(token, {
+        day: form.day,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        subjectId: selectedSubject.id,
+        teacherId: selectedTeacher?.id ?? null,
+        classId: selectedClass.id,
+        room: form.room,
+        semester: form.semester,
+        academicYear: form.academicYear,
+        status: form.isActive === "Aktif" ? "ACTIVE" : "INACTIVE",
+      });
+      await refreshSchedules(false);
+      setForm(defaultForm);
+      setAddOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal menyimpan jadwal.");
+    }
   };
 
-  const handleEditSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!selectedSchedule) return;
+    if (!selectedSchedule || !token) return;
     if (!validateForm()) return;
+    if (!selectedClass || !selectedSubject) {
+      alert("Pastikan kelas dan mata pelajaran dipilih dari data backend.");
+      return;
+    }
 
-    const updatedSchedule: Schedule = {
-      ...selectedSchedule,
-      day: form.day,
-      startTime: form.startTime,
-      endTime: form.endTime,
-      subject: form.subject,
-      teacher: form.teacher,
-      className: form.className,
-      room: form.room,
-      semester: form.semester,
-      academicYear: form.academicYear,
-      isActive: form.isActive === "Aktif",
-    };
-
-    setSchedules((previous) =>
-      previous.map((schedule) =>
-        schedule.id === selectedSchedule.id ? updatedSchedule : schedule
-      )
-    );
-
-    setSelectedSchedule(null);
-    setForm(defaultForm);
-    setEditOpen(false);
+    try {
+      await updateSchedule(token, selectedSchedule.id, {
+        day: form.day,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        subjectId: selectedSubject.id,
+        teacherId: selectedTeacher?.id ?? null,
+        classId: selectedClass.id,
+        room: form.room,
+        semester: form.semester,
+        academicYear: form.academicYear,
+        status: form.isActive === "Aktif" ? "ACTIVE" : "INACTIVE",
+      });
+      await refreshSchedules(false);
+      setSelectedSchedule(null);
+      setForm(defaultForm);
+      setEditOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal memperbarui jadwal.");
+    }
   };
 
   const handleDetail = (schedule: Schedule) => {
@@ -281,14 +345,17 @@ export default function SchedulesPage() {
     setEditOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const confirmed = confirm("Yakin ingin menghapus jadwal ini?");
 
-    if (!confirmed) return;
+    if (!confirmed || !token) return;
 
-    setSchedules((previous) =>
-      previous.filter((schedule) => schedule.id !== id)
-    );
+    try {
+      await deleteSchedule(token, id);
+      await refreshSchedules(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal menghapus jadwal.");
+    }
   };
 
   const resetFilter = () => {
@@ -332,7 +399,13 @@ export default function SchedulesPage() {
           <Button
             className="bg-emerald-600 hover:bg-emerald-700"
             onClick={() => {
-              setForm(defaultForm);
+              setForm({
+                ...defaultForm,
+                className: classes[0]?.name ?? defaultForm.className,
+                subject: subjects[0]?.name ?? defaultForm.subject,
+                teacher: teachers[0]?.fullName ?? defaultForm.teacher,
+                academicYear: classes[0]?.academicYear ?? defaultForm.academicYear,
+              });
               setAddOpen(true);
             }}
           >
@@ -377,15 +450,11 @@ export default function SchedulesPage() {
                 onChange={(event) => setClassFilter(event.target.value)}
               >
                 <option value="Semua">Kelas</option>
-                <option value="X IPA 1">X IPA 1</option>
-                <option value="X IPS 1">X IPS 1</option>
-                <option value="XI IPA 1">XI IPA 1</option>
-                <option value="XI IPS 1">XI IPS 1</option>
-                <option value="XII IPA 1">XII IPA 1</option>
-                <option value="XII IPS 1">XII IPS 1</option>
-                <option value="X Agama">X Agama</option>
-                <option value="XI Agama">XI Agama</option>
-                <option value="XII Agama">XII Agama</option>
+                {classOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
               </select>
 
               <select
@@ -539,6 +608,9 @@ export default function SchedulesPage() {
           open={addOpen}
           onOpenChange={setAddOpen}
           form={form}
+          classOptions={classOptions}
+          subjects={subjects}
+          teachers={teachers}
           onChange={handleChange}
           onSubmit={handleAddSubmit}
           submitLabel="Simpan Jadwal"
@@ -550,6 +622,9 @@ export default function SchedulesPage() {
           open={editOpen}
           onOpenChange={setEditOpen}
           form={form}
+          classOptions={classOptions}
+          subjects={subjects}
+          teachers={teachers}
           onChange={handleChange}
           onSubmit={handleEditSubmit}
           submitLabel="Simpan Perubahan"
@@ -571,6 +646,9 @@ type ScheduleFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   form: ScheduleForm;
+  classOptions: string[];
+  subjects: SubjectItem[];
+  teachers: TeacherItem[];
   onChange: (field: keyof ScheduleForm, value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   submitLabel: string;
@@ -582,6 +660,9 @@ function ScheduleFormDialog({
   open,
   onOpenChange,
   form,
+  classOptions,
+  subjects,
+  teachers,
   onChange,
   onSubmit,
   submitLabel,
@@ -619,20 +700,11 @@ function ScheduleFormDialog({
                 value={form.subject}
                 onChange={(event) => onChange("subject", event.target.value)}
               >
-                <option value="Al-Qur'an Hadis">Al-Qur&apos;an Hadis</option>
-                <option value="Akidah Akhlak">Akidah Akhlak</option>
-                <option value="Fikih">Fikih</option>
-                <option value="Bahasa Arab">Bahasa Arab</option>
-                <option value="Bahasa Indonesia">Bahasa Indonesia</option>
-                <option value="Bahasa Inggris">Bahasa Inggris</option>
-                <option value="Matematika">Matematika</option>
-                <option value="Biologi">Biologi</option>
-                <option value="Fisika">Fisika</option>
-                <option value="Kimia">Kimia</option>
-                <option value="Ekonomi">Ekonomi</option>
-                <option value="Geografi">Geografi</option>
-                <option value="Sosiologi">Sosiologi</option>
-                <option value="Informatika">Informatika</option>
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.name}>
+                    {subject.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -661,30 +733,11 @@ function ScheduleFormDialog({
                 value={form.teacher}
                 onChange={(event) => onChange("teacher", event.target.value)}
               >
-                <option value="Drs. Ahmad Zainuddin">
-                  Drs. Ahmad Zainuddin
-                </option>
-                <option value="Siti Rahmawati, S.Pd">
-                  Siti Rahmawati, S.Pd
-                </option>
-                <option value="Muhammad Hasan, S.Ag">
-                  Muhammad Hasan, S.Ag
-                </option>
-                <option value="Nurul Hidayah, S.Pd">
-                  Nurul Hidayah, S.Pd
-                </option>
-                <option value="Budi Santoso, S.Kom">
-                  Budi Santoso, S.Kom
-                </option>
-                <option value="Aisyah Fitriani, S.Pd">
-                  Aisyah Fitriani, S.Pd
-                </option>
-                <option value="Agus Prasetyo, S.Pd">
-                  Agus Prasetyo, S.Pd
-                </option>
-                <option value="Dewi Lestari, S.Pd">
-                  Dewi Lestari, S.Pd
-                </option>
+                {teachers.map((teacher) => (
+                  <option key={teacher.id} value={teacher.fullName}>
+                    {teacher.fullName}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -695,15 +748,11 @@ function ScheduleFormDialog({
                 value={form.className}
                 onChange={(event) => onChange("className", event.target.value)}
               >
-                <option value="X IPA 1">X IPA 1</option>
-                <option value="X IPS 1">X IPS 1</option>
-                <option value="XI IPA 1">XI IPA 1</option>
-                <option value="XI IPS 1">XI IPS 1</option>
-                <option value="XII IPA 1">XII IPA 1</option>
-                <option value="XII IPS 1">XII IPS 1</option>
-                <option value="X Agama">X Agama</option>
-                <option value="XI Agama">XI Agama</option>
-                <option value="XII Agama">XII Agama</option>
+                {classOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
               </select>
             </div>
 

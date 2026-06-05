@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Download,
@@ -15,7 +15,16 @@ import {
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { GradeBadge } from "@/components/shared/grade-badge";
-import { getGrades } from "@/services/grade-service";
+import {
+  createGrade,
+  deleteGrade,
+  getGrades,
+  updateGrade,
+} from "@/services/grade-service";
+import { ClassItem, getClasses } from "@/services/class-service";
+import { getStudents, StudentItem } from "@/services/student-service";
+import { getSubjects, SubjectItem } from "@/services/subject-service";
+import { getTeachers, TeacherItem } from "@/services/teacher-service";
 import { useAuthStore } from "@/store/auth-store";
 import { Grade } from "@/types/grade";
 
@@ -55,32 +64,6 @@ const defaultForm: GradeForm = {
   note: "",
 };
 
-const classOptions = [
-  "X IPA 1",
-  "X IPS 1",
-  "XI IPA 1",
-  "XI IPS 1",
-  "XI Agama",
-  "XII IPA 1",
-  "XII IPS 1",
-  "XII Agama",
-];
-
-const subjectOptions = [
-  "Al-Qur'an Hadis",
-  "Fikih",
-  "Bahasa Arab",
-  "Bahasa Indonesia",
-  "Bahasa Inggris",
-  "Matematika",
-  "Biologi",
-  "Fisika",
-  "Kimia",
-  "Ekonomi",
-  "Sosiologi",
-  "Informatika",
-];
-
 function gradeToForm(grade: Grade): GradeForm {
   return {
     studentName: grade.studentName,
@@ -93,6 +76,31 @@ function gradeToForm(grade: Grade): GradeForm {
     finalExamScore: String(grade.finalExamScore),
     note: grade.note || "",
   };
+}
+
+function mapGradeItem(item: Awaited<ReturnType<typeof getGrades>>["data"][number]): Grade {
+  return {
+    id: item.id,
+    studentId: item.student?.id,
+    classId: item.class?.id,
+    subjectId: item.subject?.id,
+    teacherId: item.teacher?.id ?? null,
+    studentName: item.student?.fullName ?? "-",
+    className: item.class?.name ?? "-",
+    subject: item.subject?.name ?? "-",
+    teacher: item.teacher?.fullName ?? "-",
+    assignmentScore: item.assignmentScore,
+    dailyScore: item.dailyScore,
+    midtermScore: item.midtermScore,
+    finalExamScore: item.finalExamScore,
+    finalScore: item.finalScore,
+    predicate: item.predicate,
+    note: item.note ?? "",
+  };
+}
+
+function getStudentClass(student: StudentItem) {
+  return student.currentClass ?? student.class ?? null;
 }
 
 function calculateFinalScore(
@@ -162,6 +170,10 @@ function groupGradesByStudent(grades: Grade[]) {
 export default function GradesPage() {
   const { token } = useAuthStore();
   const [grades, setGrades] = useState<Grade[]>([]);
+  const [students, setStudents] = useState<StudentItem[]>([]);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [teachers, setTeachers] = useState<TeacherItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -181,8 +193,30 @@ export default function GradesPage() {
 
   const [form, setForm] = useState<GradeForm>(defaultForm);
 
+  const refreshGrades = useCallback(async (showLoading = false) => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (showLoading) setLoading(true);
+      setError("");
+      const response = await getGrades(token);
+      setGrades(response.data.map(mapGradeItem));
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Gagal memuat data nilai dari backend.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
-    async function fetchGrades() {
+    async function fetchPageData() {
       if (!token) {
         setLoading(false);
         return;
@@ -191,36 +225,31 @@ export default function GradesPage() {
       try {
         setLoading(true);
         setError("");
-        const response = await getGrades(token);
-        setGrades(
-          response.data.map((item) => ({
-            id: item.id,
-            studentName: item.student?.fullName ?? "-",
-            className: item.class?.name ?? "-",
-            subject: item.subject?.name ?? "-",
-            teacher: item.teacher?.fullName ?? "-",
-            assignmentScore: item.assignmentScore,
-            dailyScore: item.dailyScore,
-            midtermScore: item.midtermScore,
-            finalExamScore: item.finalExamScore,
-            finalScore: item.finalScore,
-            predicate: item.predicate,
-            note: item.note ?? "",
-          })),
-        );
+        const [studentsResponse, classesResponse, subjectsResponse, teachersResponse] =
+          await Promise.all([
+            getStudents(token),
+            getClasses(token),
+            getSubjects(token),
+            getTeachers(token),
+          ]);
+        setStudents(studentsResponse.data);
+        setClasses(classesResponse.data);
+        setSubjects(subjectsResponse.data);
+        setTeachers(teachersResponse.data);
+        await refreshGrades(false);
       } catch (error) {
         setError(
           error instanceof Error
             ? error.message
-            : "Gagal memuat data nilai dari backend.",
+            : "Gagal memuat pilihan nilai dari backend.",
         );
       } finally {
         setLoading(false);
       }
     }
 
-    fetchGrades();
-  }, [token]);
+    fetchPageData();
+  }, [refreshGrades, token]);
 
   const filteredGrades = useMemo(() => {
     return grades.filter((grade) => {
@@ -258,44 +287,37 @@ export default function GradesPage() {
       grade.className === selectedStudentClass
   );
 
+  const selectedStudent = useMemo(() => {
+    return students.find((student) => student.fullName === form.studentName) ?? null;
+  }, [form.studentName, students]);
+
+  const selectedClass = useMemo(() => {
+    return classes.find((item) => item.name === form.className) ?? null;
+  }, [classes, form.className]);
+
+  const selectedSubject = useMemo(() => {
+    return subjects.find((item) => item.name === form.subject) ?? null;
+  }, [form.subject, subjects]);
+
+  const selectedTeacher = useMemo(() => {
+    return teachers.find((item) => item.fullName === form.teacher) ?? null;
+  }, [form.teacher, teachers]);
+
+  const classOptions = useMemo(
+    () => (classes.length ? classes.map((item) => item.name) : [defaultForm.className]),
+    [classes],
+  );
+
+  const subjectOptions = useMemo(
+    () => (subjects.length ? subjects.map((item) => item.name) : [defaultForm.subject]),
+    [subjects],
+  );
+
   const handleChange = (field: keyof GradeForm, value: string) => {
     setForm((previous) => ({
       ...previous,
       [field]: value,
     }));
-  };
-
-  const buildGradeFromForm = (id: string): Grade => {
-    const assignmentScore = normalizeScore(form.assignmentScore);
-    const dailyScore = normalizeScore(form.dailyScore);
-    const midtermScore = normalizeScore(form.midtermScore);
-    const finalExamScore = normalizeScore(form.finalExamScore);
-
-    const finalScore = Number(
-      calculateFinalScore(
-        assignmentScore,
-        dailyScore,
-        midtermScore,
-        finalExamScore
-      ).toFixed(2)
-    );
-
-    const predicate = getPredicate(finalScore);
-
-    return {
-      id,
-      studentName: form.studentName,
-      className: form.className,
-      subject: form.subject,
-      teacher: form.teacher,
-      assignmentScore,
-      dailyScore,
-      midtermScore,
-      finalExamScore,
-      finalScore,
-      predicate,
-      note: form.note,
-    };
   };
 
   const validateForm = () => {
@@ -307,35 +329,56 @@ export default function GradesPage() {
     return true;
   };
 
-  const handleAddSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!validateForm()) return;
+    if (!validateForm() || !token) return;
+    if (!selectedStudent || !selectedClass || !selectedSubject) {
+      alert("Pastikan siswa, kelas, dan mata pelajaran dipilih dari data backend.");
+      return;
+    }
 
-    const newGrade = buildGradeFromForm(Date.now().toString());
-
-    setGrades((previous) => [newGrade, ...previous]);
-    setForm(defaultForm);
-    setAddOpen(false);
+    try {
+      await createGrade(token, {
+        studentId: selectedStudent.id,
+        classId: selectedClass.id,
+        subjectId: selectedSubject.id,
+        teacherId: selectedTeacher?.id ?? null,
+        assignmentScore: normalizeScore(form.assignmentScore),
+        dailyScore: normalizeScore(form.dailyScore),
+        midtermScore: normalizeScore(form.midtermScore),
+        finalExamScore: normalizeScore(form.finalExamScore),
+        note: form.note,
+      });
+      await refreshGrades(false);
+      setForm(defaultForm);
+      setAddOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal menyimpan nilai.");
+    }
   };
 
-  const handleEditSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!selectedGrade) return;
+    if (!selectedGrade || !token) return;
     if (!validateForm()) return;
 
-    const updatedGrade = buildGradeFromForm(selectedGrade.id);
-
-    setGrades((previous) =>
-      previous.map((grade) =>
-        grade.id === selectedGrade.id ? updatedGrade : grade
-      )
-    );
-
-    setSelectedGrade(null);
-    setForm(defaultForm);
-    setEditOpen(false);
+    try {
+      await updateGrade(token, selectedGrade.id, {
+        assignmentScore: normalizeScore(form.assignmentScore),
+        dailyScore: normalizeScore(form.dailyScore),
+        midtermScore: normalizeScore(form.midtermScore),
+        finalExamScore: normalizeScore(form.finalExamScore),
+        note: form.note,
+      });
+      await refreshGrades(false);
+      setSelectedGrade(null);
+      setForm(defaultForm);
+      setEditOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal memperbarui nilai.");
+    }
   };
 
   const handleDetail = (grade: Grade) => {
@@ -355,12 +398,17 @@ export default function GradesPage() {
     setEditOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const confirmed = confirm("Yakin ingin menghapus data nilai ini?");
 
-    if (!confirmed) return;
+    if (!confirmed || !token) return;
 
-    setGrades((previous) => previous.filter((grade) => grade.id !== id));
+    try {
+      await deleteGrade(token, id);
+      await refreshGrades(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal menghapus nilai.");
+    }
   };
 
   const resetFilter = () => {
@@ -411,7 +459,13 @@ export default function GradesPage() {
             <Button
               className="bg-emerald-600 hover:bg-emerald-700"
               onClick={() => {
-                setForm(defaultForm);
+                setForm({
+                  ...defaultForm,
+                  studentName: students[0]?.fullName ?? defaultForm.studentName,
+                  className: classes[0]?.name ?? defaultForm.className,
+                  subject: subjects[0]?.name ?? defaultForm.subject,
+                  teacher: teachers[0]?.fullName ?? defaultForm.teacher,
+                });
                 setAddOpen(true);
               }}
             >
@@ -517,6 +571,10 @@ export default function GradesPage() {
           open={addOpen}
           onOpenChange={setAddOpen}
           form={form}
+          students={students}
+          classOptions={classOptions}
+          subjectOptions={subjectOptions}
+          teachers={teachers}
           onChange={handleChange}
           onSubmit={handleAddSubmit}
           submitLabel="Simpan Nilai"
@@ -545,6 +603,10 @@ export default function GradesPage() {
           open={editOpen}
           onOpenChange={setEditOpen}
           form={form}
+          students={students}
+          classOptions={classOptions}
+          subjectOptions={subjectOptions}
+          teachers={teachers}
           onChange={handleChange}
           onSubmit={handleEditSubmit}
           submitLabel="Simpan Perubahan"
@@ -856,6 +918,10 @@ type GradeFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   form: GradeForm;
+  students: StudentItem[];
+  classOptions: string[];
+  subjectOptions: string[];
+  teachers: TeacherItem[];
   onChange: (field: keyof GradeForm, value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   submitLabel: string;
@@ -867,6 +933,10 @@ function GradeFormDialog({
   open,
   onOpenChange,
   form,
+  students,
+  classOptions,
+  subjectOptions,
+  teachers,
   onChange,
   onSubmit,
   submitLabel,
@@ -899,13 +969,23 @@ function GradeFormDialog({
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Nama Siswa</Label>
-              <Input
-                placeholder="Contoh: Ahmad Fauzi"
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={form.studentName}
                 onChange={(event) =>
                   onChange("studentName", event.target.value)
                 }
-              />
+              >
+                {students.map((student) => {
+                  const studentClass = getStudentClass(student);
+                  return (
+                    <option key={student.id} value={student.fullName}>
+                      {student.fullName}
+                      {studentClass ? ` - ${studentClass.name}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
             </div>
 
             <div className="space-y-2">
@@ -940,11 +1020,17 @@ function GradeFormDialog({
 
             <div className="space-y-2">
               <Label>Guru Pengajar</Label>
-              <Input
-                placeholder="Contoh: Drs. Ahmad Zainuddin"
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={form.teacher}
                 onChange={(event) => onChange("teacher", event.target.value)}
-              />
+              >
+                {teachers.map((teacher) => (
+                  <option key={teacher.id} value={teacher.fullName}>
+                    {teacher.fullName}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">

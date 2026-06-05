@@ -6,6 +6,7 @@ import { Menu, Search } from "lucide-react";
 
 import { useAuthStore } from "@/store/auth-store";
 import { Button } from "@/components/ui/button";
+import { roleLabels } from "@/lib/role-access";
 
 type TopbarProps = {
   onMenuClick?: () => void;
@@ -122,7 +123,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
               {user?.name || "Admin MANDA"}
             </span>
             <span className="block text-[10px] font-medium text-slate-500">
-              {user?.email || "admin@manda.sch.id"}
+              {user ? `${roleLabels[user.role]} • ${user.email}` : "admin@manda.sch.id"}
             </span>
           </span>
         </button>

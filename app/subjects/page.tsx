@@ -6,7 +6,8 @@ import { BookOpen, Eye, Filter, Search } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useAuthStore } from "@/store/auth-store";
 import { getClasses, ClassItem } from "@/services/class-service";
-import { getSubjects, SubjectItem } from "@/services/subject-service";
+import { SubjectItem } from "@/services/subject-service";
+import { getSchedules, ScheduleItem } from "@/services/schedule-service";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import { Input } from "@/components/ui/input";
 export default function SubjectsPage() {
   const { token } = useAuthStore();
   const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,12 +47,12 @@ export default function SubjectsPage() {
       try {
         setLoading(true);
         setError(null);
-        const [classResponse, subjectResponse] = await Promise.all([
+        const [classResponse, scheduleResponse] = await Promise.all([
           getClasses(token),
-          getSubjects(token),
+          getSchedules(token),
         ]);
         setClasses(classResponse.data);
-        setSubjects(subjectResponse.data);
+        setSchedules(scheduleResponse.data);
       } catch (error) {
         setError(
           error instanceof Error
@@ -87,15 +88,43 @@ export default function SubjectsPage() {
   }, [search, gradeFilter, majorFilter, classes]);
 
   const subjectsByClass = useMemo(() => {
-    return subjects.reduce<Record<string, SubjectItem[]>>((groups, subject) => {
-      const classId = subject.classId ?? subject.class?.id;
-      if (!classId) return groups;
+    return schedules.reduce<Record<string, SubjectItem[]>>((groups, schedule) => {
+      const classId = schedule.class?.id;
+      const subject = schedule.subject;
+      if (!classId || !subject) return groups;
 
       if (!groups[classId]) groups[classId] = [];
-      groups[classId].push(subject);
+
+      const alreadyExists = groups[classId].some((item) => item.id === subject.id);
+      if (!alreadyExists) {
+        groups[classId].push({
+          id: subject.id,
+          name: subject.name,
+          code: subject.code ?? undefined,
+          classId,
+          status: schedule.status,
+          class: schedule.class
+            ? {
+                id: schedule.class.id,
+                name: schedule.class.name,
+                grade: schedule.class.grade ?? "-",
+                major: schedule.class.major ?? "-",
+                academicYear: schedule.class.academicYear ?? schedule.academicYear,
+              }
+            : null,
+          teacher: schedule.teacher
+            ? {
+                id: schedule.teacher.id,
+                fullName: schedule.teacher.fullName,
+                nip: schedule.teacher.nip ?? undefined,
+              }
+            : null,
+        });
+      }
+
       return groups;
     }, {});
-  }, [subjects]);
+  }, [schedules]);
 
   const selectedClassSubjects = selectedClassId
     ? subjectsByClass[selectedClassId] ?? []
@@ -150,7 +179,7 @@ export default function SubjectsPage() {
               Data Mata Pelajaran
             </h1>
             <p className="mt-1 text-slate-500">
-              Pilih kelas untuk melihat daftar mata pelajaran yang diajarkan.
+              Pilih kelas untuk melihat mata pelajaran yang sudah masuk jadwal.
             </p>
           </div>
         </div>
@@ -302,7 +331,7 @@ function ClassSubjectsDialog({
           <DialogTitle>Mata Pelajaran — {classNameText}</DialogTitle>
           <DialogDescription>
             Pilih mata pelajaran untuk melihat detail kode, guru pengampu, dan
-            status.
+            status berdasarkan data jadwal.
           </DialogDescription>
         </DialogHeader>
 
@@ -342,7 +371,7 @@ function ClassSubjectsDialog({
 
           {subjects.length === 0 && (
             <div className="rounded-2xl border bg-slate-50 p-8 text-center text-slate-500 md:col-span-2">
-              Belum ada mata pelajaran terdaftar.
+              Belum ada mata pelajaran di jadwal kelas ini.
             </div>
           )}
         </div>

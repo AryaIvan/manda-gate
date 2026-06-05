@@ -40,6 +40,18 @@ type GradeSingleResponse = {
   data: GradeItem;
 };
 
+export type GradePayload = {
+  studentId?: string;
+  classId?: string;
+  subjectId?: string;
+  teacherId?: string | null;
+  assignmentScore?: number;
+  dailyScore?: number;
+  midtermScore?: number;
+  finalExamScore?: number;
+  note?: string;
+};
+
 export async function getGrades(token: string) {
   return apiRequest<GradeListResponse>("/grades", {
     method: "GET",
@@ -50,6 +62,29 @@ export async function getGrades(token: string) {
 export async function getGrade(token: string, id: string) {
   return apiRequest<GradeSingleResponse>(`/grades/${id}`, {
     method: "GET",
+    token,
+  });
+}
+
+export async function createGrade(token: string, body: GradePayload) {
+  return apiRequest<GradeSingleResponse>("/grades", {
+    method: "POST",
+    token,
+    body,
+  });
+}
+
+export async function updateGrade(token: string, id: string, body: GradePayload) {
+  return apiRequest<GradeSingleResponse>(`/grades/${id}`, {
+    method: "PUT",
+    token,
+    body,
+  });
+}
+
+export async function deleteGrade(token: string, id: string) {
+  return apiRequest<{ message: string; status: string }>(`/grades/${id}`, {
+    method: "DELETE",
     token,
   });
 }

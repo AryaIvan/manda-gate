@@ -40,6 +40,19 @@ type ScheduleSingleResponse = {
   data: ScheduleItem;
 };
 
+export type SchedulePayload = {
+  day: string;
+  startTime: string;
+  endTime: string;
+  subjectId: string;
+  teacherId?: string | null;
+  classId: string;
+  room: string;
+  semester: string;
+  academicYear: string;
+  status: "ACTIVE" | "INACTIVE";
+};
+
 export async function getSchedules(token: string) {
   return apiRequest<ScheduleListResponse>("/schedules", {
     method: "GET",
@@ -50,6 +63,29 @@ export async function getSchedules(token: string) {
 export async function getSchedule(token: string, id: string) {
   return apiRequest<ScheduleSingleResponse>(`/schedules/${id}`, {
     method: "GET",
+    token,
+  });
+}
+
+export async function createSchedule(token: string, body: SchedulePayload) {
+  return apiRequest<ScheduleSingleResponse>("/schedules", {
+    method: "POST",
+    token,
+    body,
+  });
+}
+
+export async function updateSchedule(token: string, id: string, body: SchedulePayload) {
+  return apiRequest<ScheduleSingleResponse>(`/schedules/${id}`, {
+    method: "PUT",
+    token,
+    body,
+  });
+}
+
+export async function deleteSchedule(token: string, id: string) {
+  return apiRequest<{ message: string; status: string }>(`/schedules/${id}`, {
+    method: "DELETE",
     token,
   });
 }

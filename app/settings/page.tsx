@@ -1,8 +1,7 @@
 "use client";
 
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowRightLeft,
   Eye,
   Filter,
   KeyRound,
@@ -26,11 +25,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { getSettings, getUsers, SystemSetting, UserAccountItem } from "@/services/setting-service";
+import {
+  changeUserStatus,
+  getSettings,
+  getUsers,
+  resetUserPassword,
+  SystemSetting,
+  updateUser,
+  UserAccountItem,
+} from "@/services/setting-service";
 import { useAuthStore } from "@/store/auth-store";
 
 type AccountRole = "Admin" | "Guru" | "Wali Kelas" | "Siswa" | "BK" | "Kepala Madrasah";
 type AccountStatus = "Aktif" | "Nonaktif" | "Belum Dibuat";
+type BackendRole = UserAccountItem["role"];
+type BackendStatus = UserAccountItem["status"];
 
 type Account = {
   id: string;
@@ -45,7 +54,45 @@ type Account = {
   lastLogin: string;
 };
 
+type AccountForm = {
+  name: string;
+  email: string;
+  username: string;
+  role: BackendRole;
+  status: BackendStatus;
+};
+
 const roleTabs: AccountRole[] = ["Admin", "Guru", "Wali Kelas", "Siswa", "BK", "Kepala Madrasah"];
+
+const roleToBackend: Record<AccountRole, BackendRole> = {
+  Admin: "ADMIN",
+  Guru: "TEACHER",
+  "Wali Kelas": "HOMEROOM_TEACHER",
+  Siswa: "STUDENT",
+  BK: "BK",
+  "Kepala Madrasah": "HEADMASTER",
+};
+
+const backendToStatus: Record<BackendStatus, AccountStatus> = {
+  ACTIVE: "Aktif",
+  INACTIVE: "Nonaktif",
+};
+
+const statusToBackend: Record<AccountStatus, BackendStatus | null> = {
+  Aktif: "ACTIVE",
+  Nonaktif: "INACTIVE",
+  "Belum Dibuat": null,
+};
+
+function toAccountForm(account: Account): AccountForm {
+  return {
+    name: account.name,
+    email: account.email,
+    username: account.username,
+    role: roleToBackend[account.role],
+    status: statusToBackend[account.status] ?? "ACTIVE",
+  };
+}
 
 const rolePermissions: Record<AccountRole, string[]> = {
   Admin: [
@@ -123,7 +170,7 @@ function mapUserToAccount(user: UserAccountItem): Account | null {
     username: user.username,
     className: "-",
     role,
-    status: user.status === "ACTIVE" ? "Aktif" : "Nonaktif",
+    status: backendToStatus[user.status],
     createdAt: user.createdAt.slice(0, 10),
     lastLogin: user.lastLogin ? user.lastLogin.slice(0, 16).replace("T", " ") : "-",
   };
@@ -140,16 +187,26 @@ export default function SettingsPage() {
   const [classFilter, setClassFilter] = useState("Semua");
   const [statusFilter, setStatusFilter] = useState("Semua");
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [accountForm, setAccountForm] = useState<AccountForm>({
+    name: "",
+    email: "",
+    username: "",
+    role: "STUDENT",
+    status: "ACTIVE",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
 
-  useEffect(() => {
-    async function fetchSettingsPage() {
+  const refreshSettingsPage = useCallback(
+    async (showLoading = false) => {
       if (!token) {
         setLoading(false);
         return;
       }
 
       try {
-        setLoading(true);
+        if (showLoading) setLoading(true);
         setError("");
         const [settingsResponse, usersResponse] = await Promise.all([
           getSettings(token),
@@ -170,10 +227,17 @@ export default function SettingsPage() {
       } finally {
         setLoading(false);
       }
-    }
+    },
+    [token],
+  );
 
-    fetchSettingsPage();
-  }, [token]);
+  useEffect(() => {
+    const refreshId = window.setTimeout(() => {
+      refreshSettingsPage(true);
+    }, 0);
+
+    return () => window.clearTimeout(refreshId);
+  }, [refreshSettingsPage]);
 
   const filteredAccounts = useMemo(() => {
     const keyword = search.toLowerCase();
@@ -206,6 +270,82 @@ export default function SettingsPage() {
     };
   }, [accounts]);
 
+  const openEditAccount = (account: Account) => {
+    setEditingAccount(account);
+    setAccountForm(toAccountForm(account));
+    setActionMessage("");
+  };
+
+  const handleResetPassword = async (account: Account) => {
+    if (!token) return;
+    const confirmed = confirm(`Reset password akun ${account.name} ke password123?`);
+    if (!confirmed) return;
+
+    try {
+      setActionMessage("");
+      await resetUserPassword(token, account.id);
+      setActionMessage(`Password ${account.name} berhasil di-reset ke password123.`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Gagal reset password akun.");
+    }
+  };
+
+  const handleToggleStatus = async (account: Account) => {
+    if (!token) return;
+    const nextStatus: BackendStatus = account.status === "Aktif" ? "INACTIVE" : "ACTIVE";
+
+    try {
+      setActionMessage("");
+      const response = await changeUserStatus(token, account.id, nextStatus);
+      const updatedAccount = mapUserToAccount(response.data);
+
+      if (updatedAccount) {
+        setAccounts((items) =>
+          items.map((item) => (item.id === account.id ? updatedAccount : item)),
+        );
+        setSelectedAccount(updatedAccount);
+      }
+
+      setActionMessage(
+        `Status akun ${account.name} berhasil diubah menjadi ${backendToStatus[nextStatus]}.`,
+      );
+      await refreshSettingsPage();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Gagal mengubah status akun.");
+    }
+  };
+
+  const handleSubmitAccount = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token || !editingAccount) return;
+
+    try {
+      setSubmitting(true);
+      setError("");
+      setActionMessage("");
+      const response = await updateUser(token, editingAccount.id, accountForm);
+      const updatedAccount = mapUserToAccount(response.data);
+
+      if (updatedAccount) {
+        setAccounts((items) =>
+          items.map((item) =>
+            item.id === editingAccount.id ? updatedAccount : item,
+          ),
+        );
+        setSelectedAccount(updatedAccount);
+        setActiveRole(updatedAccount.role);
+      }
+
+      setEditingAccount(null);
+      setActionMessage(`Akun ${accountForm.name} berhasil diperbarui.`);
+      await refreshSettingsPage();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Gagal memperbarui akun.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <DashboardLayout>
       <section className="space-y-6">
@@ -223,7 +363,10 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          <Button className="bg-emerald-600 hover:bg-emerald-700">
+          <Button
+            className="bg-emerald-600 hover:bg-emerald-700"
+            onClick={() => refreshSettingsPage(true)}
+          >
             <UserCheck size={16} className="mr-2" />
             Sinkronkan Akun
           </Button>
@@ -278,6 +421,12 @@ export default function SettingsPage() {
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
             {error}
+          </div>
+        )}
+
+        {actionMessage && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+            {actionMessage}
           </div>
         )}
 
@@ -434,6 +583,7 @@ export default function SettingsPage() {
                             variant="outline"
                             size="sm"
                             className="rounded-full"
+                            onClick={() => handleResetPassword(account)}
                           >
                             <KeyRound size={14} className="mr-1" />
                             Reset
@@ -483,6 +633,20 @@ export default function SettingsPage() {
           onOpenChange={(open) => {
             if (!open) setSelectedAccount(null);
           }}
+          onResetPassword={handleResetPassword}
+          onToggleStatus={handleToggleStatus}
+          onEdit={openEditAccount}
+        />
+
+        <AccountEditDialog
+          open={Boolean(editingAccount)}
+          onOpenChange={(open) => {
+            if (!open) setEditingAccount(null);
+          }}
+          form={accountForm}
+          setForm={setAccountForm}
+          submitting={submitting}
+          onSubmit={handleSubmitAccount}
         />
       </section>
     </DashboardLayout>
@@ -566,11 +730,17 @@ function AccountDetailDialog({
   permissions,
   open,
   onOpenChange,
+  onResetPassword,
+  onToggleStatus,
+  onEdit,
 }: {
   account: Account | null;
   permissions: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onResetPassword: (account: Account) => void;
+  onToggleStatus: (account: Account) => void;
+  onEdit: (account: Account) => void;
 }) {
   if (!account) return null;
 
@@ -625,21 +795,28 @@ function AccountDetailDialog({
           </div>
 
           <div className="space-y-3">
-            <Button className="h-12 w-full justify-start rounded-2xl bg-emerald-600 hover:bg-emerald-700">
+            <Button
+              className="h-12 w-full justify-start rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => onResetPassword(account)}
+            >
               <KeyRound size={16} className="mr-2" />
               Reset Password
             </Button>
-            <Button variant="outline" className="h-12 w-full justify-start rounded-2xl">
+            <Button
+              variant="outline"
+              className="h-12 w-full justify-start rounded-2xl"
+              onClick={() => onToggleStatus(account)}
+            >
               <Lock size={16} className="mr-2" />
               {account.status === "Aktif" ? "Nonaktifkan Akun" : "Aktifkan Akun"}
             </Button>
-            <Button variant="outline" className="h-12 w-full justify-start rounded-2xl">
-              <ArrowRightLeft size={16} className="mr-2" />
-              Pindahkan Kelas
-            </Button>
-            <Button variant="outline" className="h-12 w-full justify-start rounded-2xl">
+            <Button
+              variant="outline"
+              className="h-12 w-full justify-start rounded-2xl"
+              onClick={() => onEdit(account)}
+            >
               <Pencil size={16} className="mr-2" />
-              Ubah Email / Username
+              Ubah Data Akun
             </Button>
 
             {account.role === "Siswa" && (
@@ -671,6 +848,118 @@ function AccountDetailDialog({
             </div>
           </div>
         </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AccountEditDialog({
+  open,
+  onOpenChange,
+  form,
+  setForm,
+  submitting,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  form: AccountForm;
+  setForm: (form: AccountForm) => void;
+  submitting: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!w-[min(820px,calc(100vw-32px))] !max-w-none max-h-[90vh] overflow-y-auto rounded-3xl p-6">
+        <DialogHeader>
+          <DialogTitle>Edit Akun</DialogTitle>
+          <DialogDescription>
+            Perbarui nama, email, username, role, dan status akun.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Nama
+              <Input
+                value={form.name}
+                onChange={(event) =>
+                  setForm({ ...form, name: event.target.value })
+                }
+                required
+              />
+            </label>
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Email
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(event) =>
+                  setForm({ ...form, email: event.target.value })
+                }
+                required
+              />
+            </label>
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Username
+              <Input
+                value={form.username}
+                onChange={(event) =>
+                  setForm({ ...form, username: event.target.value })
+                }
+                required
+              />
+            </label>
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Role
+              <select
+                className="h-11 w-full rounded-2xl border bg-white px-4 text-sm text-slate-700"
+                value={form.role}
+                onChange={(event) =>
+                  setForm({ ...form, role: event.target.value as BackendRole })
+                }
+              >
+                {roleTabs.map((role) => (
+                  <option key={role} value={roleToBackend[role]}>
+                    {role}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="space-y-2 text-sm font-semibold text-slate-700">
+            Status
+            <select
+              className="h-11 w-full rounded-2xl border bg-white px-4 text-sm text-slate-700"
+              value={form.status}
+              onChange={(event) =>
+                setForm({ ...form, status: event.target.value as BackendStatus })
+              }
+            >
+              <option value="ACTIVE">Aktif</option>
+              <option value="INACTIVE">Nonaktif</option>
+            </select>
+          </label>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="submit"
+              className="bg-emerald-600 hover:bg-emerald-700"
+              disabled={submitting}
+            >
+              {submitting ? "Menyimpan..." : "Simpan Perubahan"}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
