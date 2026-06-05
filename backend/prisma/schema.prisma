@@ -1,0 +1,301 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  TEACHER
+  HOMEROOM_TEACHER
+  STUDENT
+  BK
+  HEADMASTER
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum ClassGrade {
+  X
+  XI
+  XII
+}
+
+enum ClassMajor {
+  IPA
+  IPS
+  AGAMA
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+}
+
+enum LeaveStatus {
+  Menunggu
+  Disetujui
+  Ditolak
+}
+
+enum AttendanceStatus {
+  PRESENT
+  PERMISSION
+  SICK
+  ABSENT
+  LATE
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  username      String         @unique
+  password      String
+  role          UserRole
+  status        AccountStatus  @default(ACTIVE)
+  lastLogin     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  student       Student?
+  teacher       Teacher?
+  announcements Announcement[]
+
+  @@map("users")
+}
+
+model Student {
+  id             String         @id @default(cuid())
+  userId         String?        @unique
+  nis            String         @unique
+  nisn           String?        @unique
+  fullName       String
+  gender         Gender
+  birthDate      DateTime?
+  address        String?
+  phone          String?
+  status         StudentStatus  @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  studentClasses StudentClass[]
+  attendances    Attendance[]
+  grades         Grade[]
+  leaveRequests  LeaveRequest[]
+  achievements   Achievement[]
+
+  @@map("students")
+}
+
+model Teacher {
+  id              String        @id @default(cuid())
+  userId          String?       @unique
+  nip             String?       @unique
+  fullName        String
+  gender          Gender
+  subject         String?
+  phone           String?
+  address         String?
+  status          AccountStatus @default(ACTIVE)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user            User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  homeroomClasses SchoolClass[]
+  subjects        Subject[]
+  schedules       Schedule[]
+  attendances     Attendance[]
+  grades          Grade[]
+
+  @@map("teachers")
+}
+
+model SchoolClass {
+  id                String         @id @default(cuid())
+  name              String
+  grade             ClassGrade
+  major             ClassMajor
+  homeroomTeacherId String?
+  academicYear      String
+  status            AccountStatus  @default(ACTIVE)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  homeroomTeacher   Teacher?       @relation(fields: [homeroomTeacherId], references: [id], onDelete: SetNull)
+  studentClasses    StudentClass[]
+  subjects          Subject[]
+  schedules         Schedule[]
+  attendances       Attendance[]
+  grades            Grade[]
+  leaveRequests     LeaveRequest[]
+  achievements      Achievement[]
+
+  @@unique([name, academicYear])
+  @@map("classes")
+}
+
+model StudentClass {
+  id           String        @id @default(cuid())
+  studentId    String
+  classId      String
+  academicYear String
+  status       AccountStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, classId, academicYear])
+  @@map("student_classes")
+}
+
+model Subject {
+  id          String        @id @default(cuid())
+  name        String
+  code        String?
+  classId     String
+  teacherId   String?
+  status      AccountStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  class       SchoolClass   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher     Teacher?      @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  schedules   Schedule[]
+  attendances Attendance[]
+  grades      Grade[]
+
+  @@map("subjects")
+}
+
+model Schedule {
+  id           String        @id @default(cuid())
+  day          String
+  startTime    String
+  endTime      String
+  subjectId    String
+  teacherId    String?
+  classId      String
+  room         String
+  semester     String
+  academicYear String
+  status       AccountStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  subject      Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher      Teacher?      @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  class        SchoolClass   @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@map("schedules")
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  studentId String
+  classId   String
+  subjectId String
+  teacherId String?
+  date      DateTime         @db.Date
+  status    AttendanceStatus
+  note      String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class     SchoolClass      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject   Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher   Teacher?         @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@map("attendances")
+}
+
+model Grade {
+  id              String      @id @default(cuid())
+  studentId       String
+  classId         String
+  subjectId       String
+  teacherId       String?
+  assignmentScore Float       @default(0)
+  dailyScore      Float       @default(0)
+  midtermScore    Float       @default(0)
+  finalExamScore  Float       @default(0)
+  finalScore      Float       @default(0)
+  predicate       String
+  note            String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  student         Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class           SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject         Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher         Teacher?    @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@map("grades")
+}
+
+model Announcement {
+  id          String        @id @default(cuid())
+  title       String
+  content     String        @db.Text
+  category    String
+  targetRole  String
+  publishDate DateTime      @default(now())
+  status      AccountStatus @default(ACTIVE)
+  createdById String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  createdBy   User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("announcements")
+}
+
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  studentId   String
+  classId     String
+  type        String
+  date        DateTime    @db.Date
+  status      LeaveStatus @default(Menunggu)
+  description String      @db.Text
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  student     Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class       SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@map("leave_requests")
+}
+
+model Achievement {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  studentId String
+  classId   String
+  title     String
+  level     String
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class     SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@map("achievements")
+}
+
+model SystemSetting {
+  id           String   @id @default(cuid())
+  schoolName   String   @default("MAN 2 Gresik")
+  academicYear String   @default("2026/2027")
+  semester     String   @default("Ganjil")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("system_settings")
+}
